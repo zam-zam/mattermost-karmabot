@@ -43,7 +43,12 @@ func run() error {
 		return err
 	}
 
-	b, err := bot.New(client, store, log)
+	msgs, err := bot.NewMessages(cfg.Language)
+	if err != nil {
+		return err
+	}
+
+	b, err := bot.New(client, store, log, msgs)
 	if err != nil {
 		return err
 	}
@@ -51,9 +56,9 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	go scheduler.New(store, client, log).Run(ctx)
+	go scheduler.New(store, client, log, msgs).Run(ctx)
 
-	log.Info("karmabot started")
+	log.Info("karmabot started", "language", cfg.Language)
 	events := client.Events(ctx)
 	for {
 		select {

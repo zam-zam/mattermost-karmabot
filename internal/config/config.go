@@ -16,6 +16,7 @@ type Config struct {
 	MattermostToken string `envconfig:"MATTERMOST_TOKEN" required:"true"`
 	DBPath          string `envconfig:"DB_PATH" default:"./data/karmabot.db"`
 	LogLevel        string `envconfig:"LOG_LEVEL" default:"info"`
+	Language        string `envconfig:"LANGUAGE" default:"en"`
 }
 
 // Load reads the optional .env file and then processes environment variables.

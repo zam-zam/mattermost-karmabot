@@ -5,7 +5,8 @@ Teammates thank each other by mentioning the bot; the bot tracks weekly,
 per-channel karma scores with daily limits, and announces the week's results
 before the Monday reset.
 
-- Bot replies are in **Russian**; commands are English-only.
+- Bot replies are localized: **English by default**, Russian via
+  `KARMABOT_LANGUAGE=ru`; commands are English-only.
 - One SQLite file stores everything; karma is isolated per channel.
 - The week rolls over at **Monday 00:00 UTC** (soft reset: history is kept,
   new karma starts a fresh week).
@@ -70,6 +71,7 @@ KARMABOT_MATTERMOST_URL=https://mattermost.example.com
 KARMABOT_MATTERMOST_TOKEN=<bot token>
 KARMABOT_DB_PATH=./data/karmabot.db   # default
 KARMABOT_LOG_LEVEL=info               # default
+KARMABOT_LANGUAGE=en                  # default; ru for Russian replies
 ```
 
 ### 3. Run
@@ -107,6 +109,6 @@ cmd/karmabot/          wiring, signal handling
 internal/config/       envconfig + .env loading
 internal/storage/      SQLite schema and queries
 internal/mmclient/     Mattermost REST + WebSocket client with reconnect
-internal/bot/          event routing, commands, Russian messages, periods
+internal/bot/          event routing, commands, localized messages, periods
 internal/scheduler/    Monday 00:00 UTC weekly summary
 ```

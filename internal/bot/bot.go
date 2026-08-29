@@ -35,14 +35,21 @@ type Bot struct {
 	client      Client
 	store       *storage.Store
 	log         *slog.Logger
+	msg         *Messages
 	botUsername string
 	botID       string
 	now         func() time.Time
 }
 
 // New creates the bot, taking its identity from the client so it can
-// filter out its own posts and recognize its mentions.
-func New(client Client, store *storage.Store, log *slog.Logger) (*Bot, error) {
+// filter out its own posts and recognize its mentions. Replies are
+// rendered by msg in the configured language.
+func New(
+	client Client,
+	store *storage.Store,
+	log *slog.Logger,
+	msg *Messages,
+) (*Bot, error) {
 	me := client.Me()
 	if me == nil || me.Id == "" {
 		return nil, fmt.Errorf("client returned no bot identity")
@@ -51,6 +58,7 @@ func New(client Client, store *storage.Store, log *slog.Logger) (*Bot, error) {
 		client:      client,
 		store:       store,
 		log:         log,
+		msg:         msg,
 		botUsername: me.Username,
 		botID:       me.Id,
 		now:         time.Now,
@@ -111,5 +119,5 @@ func (b *Bot) reply(ctx context.Context, channelID, message string) {
 // internal reports an infrastructure failure to the log and the user.
 func (b *Bot) internal(ctx context.Context, channelID string, err error, what string) {
 	b.log.Error(what, "err", err, "channel_id", channelID)
-	b.reply(ctx, channelID, msgInternal)
+	b.reply(ctx, channelID, b.msg.internalError())
 }

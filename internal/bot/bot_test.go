@@ -67,7 +67,7 @@ func (f *fakeClient) lastReply() string {
 	return f.posts[len(f.posts)-1].message
 }
 
-func newTestBot(t *testing.T) (*Bot, *fakeClient) {
+func newTestBot(t *testing.T, lang string) (*Bot, *fakeClient) {
 	t.Helper()
 
 	store, err := storage.Open(filepath.Join(t.TempDir(), "test.db"))
@@ -93,7 +93,11 @@ func newTestBot(t *testing.T) (*Bot, *fakeClient) {
 	}
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	b, err := New(client, store, log)
+	msgs, err := NewMessages(lang)
+	if err != nil {
+		t.Fatalf("NewMessages(%q): %v", lang, err)
+	}
+	b, err := New(client, store, log, msgs)
 	if err != nil {
 		t.Fatalf("bot.New: %v", err)
 	}
@@ -136,7 +140,7 @@ func wantContains(t *testing.T, got, want, name string) {
 }
 
 func TestStartStopTopFlow(t *testing.T) {
-	b, client := newTestBot(t)
+	b, client := newTestBot(t, "ru")
 
 	startKarma(t, b, "ch1")
 	wantContains(t, client.lastReply(), "Карма включена", "start")
@@ -158,7 +162,7 @@ func TestStartStopTopFlow(t *testing.T) {
 }
 
 func TestGrantAppliesAndReportsBudgets(t *testing.T) {
-	b, client := newTestBot(t)
+	b, client := newTestBot(t, "ru")
 	startKarma(t, b, "ch1")
 
 	say(t, b, "ch1", "u-alice", "@karmabot ++ @bob")
@@ -179,7 +183,7 @@ func TestGrantAppliesAndReportsBudgets(t *testing.T) {
 }
 
 func TestGrantDailyTotalLimit(t *testing.T) {
-	b, client := newTestBot(t)
+	b, client := newTestBot(t, "ru")
 	startKarma(t, b, "ch1")
 
 	// bob spends his budget of 5 across three targets.
@@ -194,7 +198,7 @@ func TestGrantDailyTotalLimit(t *testing.T) {
 }
 
 func TestGrantBlocksSelfAndUnknownUser(t *testing.T) {
-	b, client := newTestBot(t)
+	b, client := newTestBot(t, "ru")
 	startKarma(t, b, "ch1")
 
 	say(t, b, "ch1", "u-alice", "@karmabot ++ @alice")
@@ -205,7 +209,7 @@ func TestGrantBlocksSelfAndUnknownUser(t *testing.T) {
 }
 
 func TestGrantMultipleTargetsOneReply(t *testing.T) {
-	b, client := newTestBot(t)
+	b, client := newTestBot(t, "ru")
 	startKarma(t, b, "ch1")
 
 	say(t, b, "ch1", "u-alice", "@karmabot ++ @bob Спасибо за помощь! @carol")
@@ -216,14 +220,14 @@ func TestGrantMultipleTargetsOneReply(t *testing.T) {
 }
 
 func TestGrantInStoppedChannel(t *testing.T) {
-	b, client := newTestBot(t)
+	b, client := newTestBot(t, "ru")
 
 	say(t, b, "ch1", "u-alice", "@karmabot ++ @bob")
 	wantContains(t, client.lastReply(), "не включена", "not started")
 }
 
 func TestNegativeKarmaRejected(t *testing.T) {
-	b, client := newTestBot(t)
+	b, client := newTestBot(t, "ru")
 	startKarma(t, b, "ch1")
 
 	say(t, b, "ch1", "u-alice", "@karmabot -- @bob")
@@ -231,7 +235,7 @@ func TestNegativeKarmaRejected(t *testing.T) {
 }
 
 func TestUnknownCommandShowsHelp(t *testing.T) {
-	b, client := newTestBot(t)
+	b, client := newTestBot(t, "ru")
 
 	say(t, b, "ch1", "u-alice", "@karmabot dance")
 	wantContains(t, client.lastReply(), "Карма-бот", "unknown verb")
@@ -244,7 +248,7 @@ func TestUnknownCommandShowsHelp(t *testing.T) {
 }
 
 func TestDirectMessages(t *testing.T) {
-	b, client := newTestBot(t)
+	b, client := newTestBot(t, "ru")
 	startKarma(t, b, "ch1")
 	say(t, b, "ch1", "u-alice", "@karmabot ++ @bob")
 
@@ -261,7 +265,7 @@ func TestDirectMessages(t *testing.T) {
 }
 
 func TestIgnoredMessages(t *testing.T) {
-	b, client := newTestBot(t)
+	b, client := newTestBot(t, "ru")
 
 	before := len(client.posts)
 
@@ -336,4 +340,35 @@ func TestExtractMentions(t *testing.T) {
 			t.Errorf("extractMentions[%d] = %s, want %s", i, got[i], want[i])
 		}
 	}
+}
+
+// TestEnglishReplies runs the main flows in the default language so both
+// catalogs stay covered end to end.
+func TestEnglishReplies(t *testing.T) {
+	b, client := newTestBot(t, "en")
+
+	startKarma(t, b, "ch1")
+	wantContains(t, client.lastReply(), "Karma enabled", "start")
+
+	say(t, b, "ch1", "u-alice", "@karmabot ++ @bob")
+	reply := client.lastReply()
+	wantContains(t, reply, "✅ @bob: +1 (channel karma: ⭐ 1)", "applied")
+	wantContains(t, reply, "Left today: 4 of 5", "total budget")
+	wantContains(t, reply, "@bob: 1 of 2", "target budget")
+
+	say(t, b, "ch1", "u-alice", "@karmabot top")
+	wantContains(t, client.lastReply(), "Top-10", "top header")
+	wantContains(t, client.lastReply(), "1. @bob — ⭐ 1", "top entry")
+
+	say(t, b, "ch1", "u-alice", "@karmabot help")
+	wantContains(t, client.lastReply(), "Karma bot", "help")
+	wantContains(t, client.lastReply(), "top-10", "help top line")
+
+	say(t, b, "dm", "u-bob", "karma")
+	reply = client.lastReply()
+	wantContains(t, reply, "Your karma this week", "dm header")
+	wantContains(t, reply, "• dev — ⭐ 1", "dm entry")
+
+	say(t, b, "dm", "u-bob", "what?")
+	wantContains(t, client.lastReply(), "Didn't understand", "dm unknown")
 }

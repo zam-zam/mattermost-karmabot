@@ -36,15 +36,23 @@ type Poster interface {
 type Scheduler struct {
 	store  Store
 	poster Poster
+	msgs   *bot.Messages
 	log    *slog.Logger
 	now    func() time.Time
 }
 
-// New creates the scheduler.
-func New(store Store, poster Poster, log *slog.Logger) *Scheduler {
+// New creates the scheduler; summaries are rendered by msgs in the
+// configured language.
+func New(
+	store Store,
+	poster Poster,
+	log *slog.Logger,
+	msgs *bot.Messages,
+) *Scheduler {
 	return &Scheduler{
 		store:  store,
 		poster: poster,
+		msgs:   msgs,
 		log:    log,
 		now:    time.Now,
 	}
@@ -88,7 +96,7 @@ func (s *Scheduler) publishFinishedWeek(ctx context.Context) {
 			continue
 		}
 
-		if err := s.poster.CreatePost(ctx, ch.ID, bot.FormatWeeklyTop(top)); err != nil {
+		if err := s.poster.CreatePost(ctx, ch.ID, s.msgs.WeeklyTop(top)); err != nil {
 			s.log.Error("posting weekly summary", "err", err, "channel_id", ch.ID)
 		}
 	}

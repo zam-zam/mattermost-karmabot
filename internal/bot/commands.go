@@ -2,7 +2,6 @@ package bot
 
 import (
 	"context"
-	"fmt"
 	"regexp"
 	"strings"
 
@@ -45,10 +44,11 @@ func (b *Bot) handleChannel(
 	case verbGrant:
 		b.cmdGrant(ctx, channel.Id, post, args)
 	case "--":
-		b.reply(ctx, channel.Id, msgNoNegative)
+		b.reply(ctx, channel.Id, b.msg.noNegative())
 	default:
 		// Includes a bare mention and unknown verbs: show the cheat sheet.
-		b.reply(ctx, channel.Id, helpMessage(b.botUsername))
+		b.reply(ctx, channel.Id,
+			b.msg.help(b.botUsername, dailyTotalLimit, dailyPerTargetLimit))
 	}
 }
 
@@ -58,9 +58,10 @@ func (b *Bot) handleDirect(ctx context.Context, post *model.Post) {
 	case "karma":
 		b.cmdMyKarma(ctx, post.ChannelId, post.UserId)
 	case "help":
-		b.reply(ctx, post.ChannelId, helpMessage(b.botUsername))
+		b.reply(ctx, post.ChannelId,
+			b.msg.help(b.botUsername, dailyTotalLimit, dailyPerTargetLimit))
 	default:
-		b.reply(ctx, post.ChannelId, msgDMUnknown)
+		b.reply(ctx, post.ChannelId, b.msg.dmUnknown())
 	}
 }
 
@@ -79,7 +80,7 @@ func (b *Bot) cmdStart(ctx context.Context, channel *model.Channel) {
 		b.internal(ctx, channel.Id, err, "enabling channel")
 		return
 	}
-	b.reply(ctx, channel.Id, fmt.Sprintf(msgStarted, b.botUsername))
+	b.reply(ctx, channel.Id, b.msg.started(b.botUsername))
 }
 
 func (b *Bot) cmdStop(ctx context.Context, channelID string) {
@@ -87,7 +88,7 @@ func (b *Bot) cmdStop(ctx context.Context, channelID string) {
 		b.internal(ctx, channelID, err, "disabling channel")
 		return
 	}
-	b.reply(ctx, channelID, msgStopped)
+	b.reply(ctx, channelID, b.msg.stopped())
 }
 
 func (b *Bot) cmdTop(ctx context.Context, channelID string) {
@@ -97,7 +98,7 @@ func (b *Bot) cmdTop(ctx context.Context, channelID string) {
 		return
 	}
 	if !enabled {
-		b.reply(ctx, channelID, fmt.Sprintf(msgNotStarted, b.botUsername))
+		b.reply(ctx, channelID, b.msg.notStarted(b.botUsername))
 		return
 	}
 
@@ -107,10 +108,10 @@ func (b *Bot) cmdTop(ctx context.Context, channelID string) {
 		return
 	}
 	if len(entries) == 0 {
-		b.reply(ctx, channelID, msgTopEmpty)
+		b.reply(ctx, channelID, b.msg.topEmpty())
 		return
 	}
-	b.reply(ctx, channelID, formatRanked(fmt.Sprintf(msgTopHeader, topLimit), entries))
+	b.reply(ctx, channelID, b.msg.top(topLimit, entries))
 }
 
 // resolvedTarget pairs a mention with its user, for budgets and replies.
@@ -134,13 +135,13 @@ func (b *Bot) cmdGrant(
 		return
 	}
 	if !enabled {
-		b.reply(ctx, channelID, fmt.Sprintf(msgNotStarted, b.botUsername))
+		b.reply(ctx, channelID, b.msg.notStarted(b.botUsername))
 		return
 	}
 
 	targets := extractMentions(args, b.botUsername)
 	if len(targets) == 0 {
-		b.reply(ctx, channelID, fmt.Sprintf(msgNoTargets, b.botUsername))
+		b.reply(ctx, channelID, b.msg.noTargets(b.botUsername))
 		return
 	}
 
@@ -159,11 +160,11 @@ func (b *Bot) cmdGrant(
 	for _, name := range targets {
 		user, err := b.client.GetUserByUsername(ctx, name)
 		if err != nil {
-			lines = append(lines, fmt.Sprintf(msgUserNotFound, name))
+			lines = append(lines, b.msg.userNotFound(name))
 			continue
 		}
 		if user.Id == post.UserId {
-			lines = append(lines, fmt.Sprintf(msgSelfKarma, user.Username))
+			lines = append(lines, b.msg.selfKarma(user.Username))
 			continue
 		}
 
@@ -174,11 +175,9 @@ func (b *Bot) cmdGrant(
 
 		switch {
 		case totalGiven >= dailyTotalLimit:
-			lines = append(lines,
-				fmt.Sprintf(msgDailyTotalMax, user.Username, dailyTotalLimit))
+			lines = append(lines, b.msg.dailyTotalMax(user.Username, dailyTotalLimit))
 		case perTarget[user.Id] >= dailyPerTargetLimit:
-			lines = append(lines,
-				fmt.Sprintf(msgPerTargetMax, user.Username, dailyPerTargetLimit))
+			lines = append(lines, b.msg.perTargetMax(user.Username, dailyPerTargetLimit))
 		default:
 			newTotal, err := b.store.GrantKarma(ctx, storage.Grant{
 				ChannelID:      channelID,
@@ -190,12 +189,12 @@ func (b *Bot) cmdGrant(
 			})
 			if err != nil {
 				b.log.Error("granting karma", "err", err, "channel_id", channelID)
-				lines = append(lines, fmt.Sprintf(msgGrantFailed, user.Username))
+				lines = append(lines, b.msg.grantFailed(user.Username))
 				continue
 			}
 			totalGiven++
 			perTarget[user.Id]++
-			lines = append(lines, fmt.Sprintf(msgApplied, user.Username, karmaStars(newTotal)))
+			lines = append(lines, b.msg.applied(user.Username, karmaStars(newTotal)))
 		}
 	}
 
@@ -211,12 +210,12 @@ func (b *Bot) budgetFooter(
 	perTarget map[string]int,
 ) string {
 	parts := []string{
-		fmt.Sprintf(msgBudgetsPrefix, dailyTotalLimit-totalGiven, dailyTotalLimit),
+		b.msg.budgetsPrefix(dailyTotalLimit-totalGiven, dailyTotalLimit),
 	}
 	for _, t := range targets {
 		used := perTarget[t.userID]
 		parts = append(parts,
-			fmt.Sprintf(msgBudgetsTarget, t.username, dailyPerTargetLimit-used, dailyPerTargetLimit))
+			b.msg.budgetsTarget(t.username, dailyPerTargetLimit-used, dailyPerTargetLimit))
 	}
 	return strings.Join(parts, " · ")
 }
@@ -227,7 +226,7 @@ func (b *Bot) cmdMyKarma(ctx context.Context, channelID, userID string) {
 		b.internal(ctx, channelID, err, "reading user karma")
 		return
 	}
-	b.reply(ctx, channelID, formatDMReport(entries))
+	b.reply(ctx, channelID, b.msg.dmReport(entries))
 }
 
 // stripBotMention splits "‹@bot …rest›" when the message starts with the
