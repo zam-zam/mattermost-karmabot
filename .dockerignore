@@ -1,0 +1,7 @@
+.env
+data/
+.git/
+.agents/
+skills-lock.json
+Dockerfile
+README.md
