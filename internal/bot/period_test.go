@@ -17,26 +17,26 @@ func TestWeekKey(t *testing.T) {
 			want: "2026-08-24",
 		},
 		{
-			// 23:59:59 UTC is Monday 02:59:59 MSK, before the reset hour.
-			name: "monday before reset hour belongs to previous week",
-			at:   time.Date(2026, 8, 23, 23, 59, 59, 0, time.UTC),
-			want: "2026-08-17",
+			// The last second of Sunday still belongs to the closing week.
+			name: "sunday night belongs to the week ending at monday midnight",
+			at:   time.Date(2026, 8, 30, 23, 59, 59, 0, time.UTC),
+			want: "2026-08-24",
 		},
 		{
-			// 00:00 UTC is Monday 03:00 MSK, exactly the reset hour.
-			name: "monday at reset hour starts the new week",
+			// Monday 00:00 UTC is exactly the rollover instant.
+			name: "monday midnight starts the new week",
 			at:   time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC),
 			want: "2026-08-24",
 		},
 		{
-			// Sunday 23:00 UTC is Monday 02:00 MSK, still the old week.
-			name: "sunday night belongs to the week ending at monday 03:00",
-			at:   time.Date(2026, 8, 30, 23, 0, 0, 0, time.UTC),
+			name: "just after monday midnight keeps the new week",
+			at:   time.Date(2026, 8, 24, 0, 0, 1, 0, time.UTC),
 			want: "2026-08-24",
 		},
 		{
-			name: "instant already in msk keeps its week",
-			at:   time.Date(2026, 8, 28, 12, 0, 0, 0, MSK),
+			// 01:00 at UTC+5 is Sunday 20:00 UTC: still the closing week.
+			name: "non-utc zone is converted to utc before dating the week",
+			at:   time.Date(2026, 8, 31, 1, 0, 0, 0, time.FixedZone("+5", 5*60*60)),
 			want: "2026-08-24",
 		},
 	}
@@ -57,14 +57,20 @@ func TestDayKey(t *testing.T) {
 		want string
 	}{
 		{
-			name: "utc midnight is 03:00 msk same day",
+			name: "utc midnight starts the day",
 			at:   time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC),
 			want: "2026-08-28",
 		},
 		{
-			name: "utc 23:30 is next msk day",
+			name: "utc 23:30 stays on the same utc day",
 			at:   time.Date(2026, 8, 28, 23, 30, 0, 0, time.UTC),
-			want: "2026-08-29",
+			want: "2026-08-28",
+		},
+		{
+			// 01:30 at UTC+3 is 22:30 UTC on the previous calendar date.
+			name: "non-utc zone is converted to utc",
+			at:   time.Date(2026, 8, 29, 1, 30, 0, 0, time.FixedZone("+3", 3*60*60)),
+			want: "2026-08-28",
 		},
 	}
 
@@ -84,20 +90,20 @@ func TestNextWeeklyReset(t *testing.T) {
 		want time.Time
 	}{
 		{
-			name: "sunday before midnight resets next morning",
-			at:   time.Date(2026, 8, 30, 20, 0, 0, 0, time.UTC), // Sunday 23:00 MSK
-			want: time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC),  // Monday 03:00 MSK
+			name: "sunday evening resets at monday midnight",
+			at:   time.Date(2026, 8, 30, 20, 0, 0, 0, time.UTC), // Sunday
+			want: time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC),
 		},
 		{
-			// Sunday 23:00 UTC is Monday 02:00 MSK, before the reset hour.
-			name: "monday before reset is today",
-			at:   time.Date(2026, 8, 23, 23, 0, 0, 0, time.UTC),
-			want: time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC), // 03:00 MSK
+			// The last second of Sunday still aims at the imminent midnight.
+			name: "sunday 23:59:59 resets in one second",
+			at:   time.Date(2026, 8, 30, 23, 59, 59, 0, time.UTC),
+			want: time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC),
 		},
 		{
-			// 03:00:01 UTC is 06:00:01 MSK, just past this week's reset.
-			name: "monday at reset jumps a week",
-			at:   time.Date(2026, 8, 24, 3, 0, 1, 0, time.UTC),
+			// At the rollover instant itself the next reset is a week out.
+			name: "monday midnight jumps a week",
+			at:   time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC),
 			want: time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC),
 		},
 		{
@@ -118,8 +124,9 @@ func TestNextWeeklyReset(t *testing.T) {
 }
 
 func TestPreviousWeekKey(t *testing.T) {
-	// At the reset moment itself the finished week is the previous Monday.
-	at := time.Date(2026, 8, 31, 3, 0, 0, 0, time.UTC) // Monday 06:00 MSK
+	// At the Monday 00:00 UTC rollover itself the finished week is the
+	// previous Monday.
+	at := time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC)
 	if got := PreviousWeekKey(at); got != "2026-08-24" {
 		t.Errorf("PreviousWeekKey(%v) = %q, want %q", at, got, "2026-08-24")
 	}

@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	// Daily karma budgets, per channel, per MSK calendar day.
+	// Daily karma budgets, per channel, per UTC calendar day.
 	dailyTotalLimit     = 5
 	dailyPerTargetLimit = 2
 	topLimit            = 10

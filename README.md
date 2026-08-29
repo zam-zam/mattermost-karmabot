@@ -7,7 +7,7 @@ before the Monday reset.
 
 - Bot replies are in **Russian**; commands are English-only.
 - One SQLite file stores everything; karma is isolated per channel.
-- The week rolls over at **Monday 03:00 MSK** (soft reset: history is kept,
+- The week rolls over at **Monday 00:00 UTC** (soft reset: history is kept,
   new karma starts a fresh week).
 
 ## Commands
@@ -31,7 +31,7 @@ In a direct message to the bot:
 
 ### Limits
 
-Per channel, per MSK calendar day, a user can give:
+Per channel, per UTC calendar day, a user can give:
 
 - at most **5 karma in total**, and
 - at most **2 karma to the same person**.
@@ -46,7 +46,7 @@ as `⭐⭐⭐ 3`.
 
 ### Weekly summary
 
-At Monday 03:00 MSK the bot posts the finished week's top-5 to every enabled
+At Monday 00:00 UTC the bot posts the finished week's top-5 to every enabled
 channel that had any karma. New karma after that moment counts toward the
 new week.
 
@@ -108,5 +108,5 @@ internal/config/       envconfig + .env loading
 internal/storage/      SQLite schema and queries
 internal/mmclient/     Mattermost REST + WebSocket client with reconnect
 internal/bot/          event routing, commands, Russian messages, periods
-internal/scheduler/    Monday 03:00 MSK weekly summary
+internal/scheduler/    Monday 00:00 UTC weekly summary
 ```

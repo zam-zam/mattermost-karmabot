@@ -1,5 +1,5 @@
 // Package scheduler posts the weekly karma summary to every enabled
-// channel at the Monday 03:00 MSK rollover.
+// channel at the Monday 00:00 UTC rollover.
 package scheduler
 
 import (
