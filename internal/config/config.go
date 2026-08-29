@@ -12,11 +12,13 @@ import (
 // (e.g. KARMABOT_MATTERMOST_URL). Values from the real environment take
 // precedence over the .env file.
 type Config struct {
-	MattermostURL   string `envconfig:"MATTERMOST_URL" required:"true"`
-	MattermostToken string `envconfig:"MATTERMOST_TOKEN" required:"true"`
-	DBPath          string `envconfig:"DB_PATH" default:"./data/karmabot.db"`
-	LogLevel        string `envconfig:"LOG_LEVEL" default:"info"`
-	Language        string `envconfig:"LANGUAGE" default:"en"`
+	MattermostURL       string `envconfig:"MATTERMOST_URL" required:"true"`
+	MattermostToken     string `envconfig:"MATTERMOST_TOKEN" required:"true"`
+	DBPath              string `envconfig:"DB_PATH" default:"./data/karmabot.db"`
+	LogLevel            string `envconfig:"LOG_LEVEL" default:"info"`
+	Language            string `envconfig:"LANGUAGE" default:"en"`
+	DailyTotalLimit     int    `envconfig:"DAILY_TOTAL_LIMIT" default:"5"`
+	DailyPerTargetLimit int    `envconfig:"DAILY_PER_TARGET_LIMIT" default:"2"`
 }
 
 // Load reads the optional .env file and then processes environment variables.
@@ -27,5 +29,33 @@ func Load() (Config, error) {
 	if err := envconfig.Process("karmabot", &cfg); err != nil {
 		return Config{}, fmt.Errorf("processing environment config: %w", err)
 	}
+	if err := cfg.validate(); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
+}
+
+// validate checks the settings envconfig can't express: limit values that
+// would break or dead-end karma granting.
+func (c Config) validate() error {
+	if c.DailyTotalLimit < 1 {
+		return fmt.Errorf(
+			"KARMABOT_DAILY_TOTAL_LIMIT must be at least 1, got %d",
+			c.DailyTotalLimit,
+		)
+	}
+	if c.DailyPerTargetLimit < 1 {
+		return fmt.Errorf(
+			"KARMABOT_DAILY_PER_TARGET_LIMIT must be at least 1, got %d",
+			c.DailyPerTargetLimit,
+		)
+	}
+	if c.DailyPerTargetLimit > c.DailyTotalLimit {
+		return fmt.Errorf(
+			"KARMABOT_DAILY_PER_TARGET_LIMIT (%d) must not exceed KARMABOT_DAILY_TOTAL_LIMIT (%d)",
+			c.DailyPerTargetLimit,
+			c.DailyTotalLimit,
+		)
+	}
+	return nil
 }

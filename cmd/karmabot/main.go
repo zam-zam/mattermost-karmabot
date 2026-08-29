@@ -48,7 +48,10 @@ func run() error {
 		return err
 	}
 
-	b, err := bot.New(client, store, log, msgs)
+	b, err := bot.New(client, store, log, msgs, bot.Limits{
+		DailyTotal:     cfg.DailyTotalLimit,
+		DailyPerTarget: cfg.DailyPerTargetLimit,
+	})
 	if err != nil {
 		return err
 	}

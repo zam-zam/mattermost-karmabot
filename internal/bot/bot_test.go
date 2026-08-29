@@ -97,7 +97,7 @@ func newTestBot(t *testing.T, lang string) (*Bot, *fakeClient) {
 	if err != nil {
 		t.Fatalf("NewMessages(%q): %v", lang, err)
 	}
-	b, err := New(client, store, log, msgs)
+	b, err := New(client, store, log, msgs, Limits{DailyTotal: 5, DailyPerTarget: 2})
 	if err != nil {
 		t.Fatalf("bot.New: %v", err)
 	}
@@ -371,4 +371,43 @@ func TestEnglishReplies(t *testing.T) {
 
 	say(t, b, "dm", "u-bob", "what?")
 	wantContains(t, client.lastReply(), "Didn't understand", "dm unknown")
+}
+
+// TestConfigurableLimits proves the daily budgets come from configuration,
+// not the 5/2 defaults the other tests pin.
+func TestConfigurableLimits(t *testing.T) {
+	b, client := newTestBot(t, "en")
+	b.limits = Limits{DailyTotal: 3, DailyPerTarget: 1}
+	startKarma(t, b, "ch1")
+
+	say(t, b, "ch1", "u-alice", "@karmabot ++ @bob")
+	reply := client.lastReply()
+	wantContains(t, reply, "✅ @bob: +1 (channel karma: ⭐ 1)", "applied")
+	wantContains(t, reply, "Left today: 2 of 3", "total budget")
+	wantContains(t, reply, "@bob: 0 of 1", "target budget")
+
+	say(t, b, "ch1", "u-alice", "@karmabot ++ @bob")
+	wantContains(t, client.lastReply(), "that's enough for this person today", "per-target hit")
+}
+
+func TestNewRejectsInvalidLimits(t *testing.T) {
+	tests := []struct {
+		name   string
+		limits Limits
+	}{
+		{name: "zero total", limits: Limits{DailyTotal: 0, DailyPerTarget: 1}},
+		{name: "zero per-target", limits: Limits{DailyTotal: 5, DailyPerTarget: 0}},
+		{name: "per-target above total", limits: Limits{DailyTotal: 3, DailyPerTarget: 5}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &fakeClient{
+				me: &model.User{Id: "bot-1", Username: "karmabot"},
+			}
+			if _, err := New(client, nil, nil, &Messages{}, tt.limits); err == nil {
+				t.Error("New succeeded with invalid limits, want error")
+			}
+		})
+	}
 }

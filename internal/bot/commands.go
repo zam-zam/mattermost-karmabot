@@ -48,7 +48,7 @@ func (b *Bot) handleChannel(
 	default:
 		// Includes a bare mention and unknown verbs: show the cheat sheet.
 		b.reply(ctx, channel.Id,
-			b.msg.help(b.botUsername, dailyTotalLimit, dailyPerTargetLimit))
+			b.msg.help(b.botUsername, b.limits.DailyTotal, b.limits.DailyPerTarget))
 	}
 }
 
@@ -59,7 +59,7 @@ func (b *Bot) handleDirect(ctx context.Context, post *model.Post) {
 		b.cmdMyKarma(ctx, post.ChannelId, post.UserId)
 	case "help":
 		b.reply(ctx, post.ChannelId,
-			b.msg.help(b.botUsername, dailyTotalLimit, dailyPerTargetLimit))
+			b.msg.help(b.botUsername, b.limits.DailyTotal, b.limits.DailyPerTarget))
 	default:
 		b.reply(ctx, post.ChannelId, b.msg.dmUnknown())
 	}
@@ -174,10 +174,11 @@ func (b *Bot) cmdGrant(
 		})
 
 		switch {
-		case totalGiven >= dailyTotalLimit:
-			lines = append(lines, b.msg.dailyTotalMax(user.Username, dailyTotalLimit))
-		case perTarget[user.Id] >= dailyPerTargetLimit:
-			lines = append(lines, b.msg.perTargetMax(user.Username, dailyPerTargetLimit))
+		case totalGiven >= b.limits.DailyTotal:
+			lines = append(lines, b.msg.dailyTotalMax(user.Username, b.limits.DailyTotal))
+		case perTarget[user.Id] >= b.limits.DailyPerTarget:
+			lines = append(lines,
+				b.msg.perTargetMax(user.Username, b.limits.DailyPerTarget))
 		default:
 			newTotal, err := b.store.GrantKarma(ctx, storage.Grant{
 				ChannelID:      channelID,
@@ -210,12 +211,12 @@ func (b *Bot) budgetFooter(
 	perTarget map[string]int,
 ) string {
 	parts := []string{
-		b.msg.budgetsPrefix(dailyTotalLimit-totalGiven, dailyTotalLimit),
+		b.msg.budgetsPrefix(b.limits.DailyTotal-totalGiven, b.limits.DailyTotal),
 	}
 	for _, t := range targets {
 		used := perTarget[t.userID]
 		parts = append(parts,
-			b.msg.budgetsTarget(t.username, dailyPerTargetLimit-used, dailyPerTargetLimit))
+			b.msg.budgetsTarget(t.username, b.limits.DailyPerTarget-used, b.limits.DailyPerTarget))
 	}
 	return strings.Join(parts, " · ")
 }

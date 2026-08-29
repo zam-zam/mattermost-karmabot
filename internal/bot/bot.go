@@ -14,12 +14,33 @@ import (
 	"karmabot/internal/storage"
 )
 
-const (
-	// Daily karma budgets, per channel, per UTC calendar day.
-	dailyTotalLimit     = 5
-	dailyPerTargetLimit = 2
-	topLimit            = 10
-)
+// topLimit is how many leaders the weekly `top` command shows.
+const topLimit = 10
+
+// Limits are the per-day karma budgets one giver has in a channel,
+// refreshed every UTC calendar day.
+type Limits struct {
+	DailyTotal     int
+	DailyPerTarget int
+}
+
+// validate rejects limit sets that would break or dead-end granting.
+func (l Limits) validate() error {
+	if l.DailyTotal < 1 {
+		return fmt.Errorf("daily total limit must be at least 1, got %d", l.DailyTotal)
+	}
+	if l.DailyPerTarget < 1 {
+		return fmt.Errorf("daily per-target limit must be at least 1, got %d", l.DailyPerTarget)
+	}
+	if l.DailyPerTarget > l.DailyTotal {
+		return fmt.Errorf(
+			"daily per-target limit (%d) must not exceed the daily total (%d)",
+			l.DailyPerTarget,
+			l.DailyTotal,
+		)
+	}
+	return nil
+}
 
 // Client is the Mattermost surface the bot needs; implemented by
 // mmclient.Client and by fakes in tests.
@@ -36,6 +57,7 @@ type Bot struct {
 	store       *storage.Store
 	log         *slog.Logger
 	msg         *Messages
+	limits      Limits
 	botUsername string
 	botID       string
 	now         func() time.Time
@@ -43,13 +65,19 @@ type Bot struct {
 
 // New creates the bot, taking its identity from the client so it can
 // filter out its own posts and recognize its mentions. Replies are
-// rendered by msg in the configured language.
+// rendered by msg in the configured language; granting is capped by
+// limits.
 func New(
 	client Client,
 	store *storage.Store,
 	log *slog.Logger,
 	msg *Messages,
+	limits Limits,
 ) (*Bot, error) {
+	if err := limits.validate(); err != nil {
+		return nil, fmt.Errorf("invalid limits: %w", err)
+	}
+
 	me := client.Me()
 	if me == nil || me.Id == "" {
 		return nil, fmt.Errorf("client returned no bot identity")
@@ -59,6 +87,7 @@ func New(
 		store:       store,
 		log:         log,
 		msg:         msg,
+		limits:      limits,
 		botUsername: me.Username,
 		botID:       me.Id,
 		now:         time.Now,

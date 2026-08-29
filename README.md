@@ -37,6 +37,10 @@ Per channel, per UTC calendar day, a user can give:
 - at most **5 karma in total**, and
 - at most **2 karma to the same person**.
 
+Both limits are configurable: `KARMABOT_DAILY_TOTAL_LIMIT` (default 5) and
+`KARMABOT_DAILY_PER_TARGET_LIMIT` (default 2); each must be at least 1, and
+the per-target limit must not exceed the total.
+
 Every `++` reply reports whether the karma was applied, the target's current
 channel total, and both remaining budgets. Self-karma is blocked; `--` is
 not supported.
@@ -72,6 +76,8 @@ KARMABOT_MATTERMOST_TOKEN=<bot token>
 KARMABOT_DB_PATH=./data/karmabot.db   # default
 KARMABOT_LOG_LEVEL=info               # default
 KARMABOT_LANGUAGE=en                  # default; ru for Russian replies
+KARMABOT_DAILY_TOTAL_LIMIT=5          # default
+KARMABOT_DAILY_PER_TARGET_LIMIT=2     # default
 ```
 
 ### 3. Run
