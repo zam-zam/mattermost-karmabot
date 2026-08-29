@@ -84,6 +84,7 @@ func TestEveryMessageLocalizes(t *testing.T) {
 		"DailyTotal":     5,
 		"DailyPerTarget": 2,
 		"ChannelName":    "dev",
+		"LimitsLine":     "Limits: at most 5 karma per day, of which at most 2 to one person.",
 	}
 	en := loadLocale(t, "locales/active.en.json")
 

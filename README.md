@@ -32,18 +32,18 @@ In a direct message to the bot:
 
 ### Limits
 
-Per channel, per UTC calendar day, a user can give:
+Per channel, per UTC calendar day, a giver can hand out:
 
-- at most **5 karma in total**, and
-- at most **2 karma to the same person**.
+- at most **5 karma in total** (default; `KARMABOT_DAILY_TOTAL_LIMIT`), and
+- at most **2 karma to the same person** (default;
+  `KARMABOT_DAILY_PER_TARGET_LIMIT`).
 
-Both limits are configurable: `KARMABOT_DAILY_TOTAL_LIMIT` (default 5) and
-`KARMABOT_DAILY_PER_TARGET_LIMIT` (default 2); each must be at least 1, and
-the per-target limit must not exceed the total.
+Each limit can be set to `0` for unlimited. When both are set, the
+per-target limit must not exceed the total.
 
 Every `++` reply reports whether the karma was applied, the target's current
-channel total, and both remaining budgets. Self-karma is blocked; `--` is
-not supported.
+channel total, and the remaining budgets (unlimited budgets are omitted).
+Self-karma is blocked; `--` is not supported.
 
 Scores everywhere (grant replies, `top`, weekly summary, DM report) are
 shown as stars: one star per point, then the total — e.g. 3 karma renders
@@ -76,8 +76,8 @@ KARMABOT_MATTERMOST_TOKEN=<bot token>
 KARMABOT_DB_PATH=./data/karmabot.db   # default
 KARMABOT_LOG_LEVEL=info               # default
 KARMABOT_LANGUAGE=en                  # default; ru for Russian replies
-KARMABOT_DAILY_TOTAL_LIMIT=5          # default
-KARMABOT_DAILY_PER_TARGET_LIMIT=2     # default
+KARMABOT_DAILY_TOTAL_LIMIT=5          # default; 0 = unlimited
+KARMABOT_DAILY_PER_TARGET_LIMIT=2     # default; 0 = unlimited
 ```
 
 ### 3. Run

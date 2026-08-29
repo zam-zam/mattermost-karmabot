@@ -48,7 +48,7 @@ func (b *Bot) handleChannel(
 	default:
 		// Includes a bare mention and unknown verbs: show the cheat sheet.
 		b.reply(ctx, channel.Id,
-			b.msg.help(b.botUsername, b.limits.DailyTotal, b.limits.DailyPerTarget))
+			b.msg.help(b.botUsername, b.limits))
 	}
 }
 
@@ -59,7 +59,7 @@ func (b *Bot) handleDirect(ctx context.Context, post *model.Post) {
 		b.cmdMyKarma(ctx, post.ChannelId, post.UserId)
 	case "help":
 		b.reply(ctx, post.ChannelId,
-			b.msg.help(b.botUsername, b.limits.DailyTotal, b.limits.DailyPerTarget))
+			b.msg.help(b.botUsername, b.limits))
 	default:
 		b.reply(ctx, post.ChannelId, b.msg.dmUnknown())
 	}
@@ -174,9 +174,9 @@ func (b *Bot) cmdGrant(
 		})
 
 		switch {
-		case totalGiven >= b.limits.DailyTotal:
+		case b.limits.totalExhausted(totalGiven):
 			lines = append(lines, b.msg.dailyTotalMax(user.Username, b.limits.DailyTotal))
-		case perTarget[user.Id] >= b.limits.DailyPerTarget:
+		case b.limits.perTargetExhausted(perTarget[user.Id]):
 			lines = append(lines,
 				b.msg.perTargetMax(user.Username, b.limits.DailyPerTarget))
 		default:
@@ -199,24 +199,31 @@ func (b *Bot) cmdGrant(
 		}
 	}
 
-	lines = append(lines, "", b.budgetFooter(totalGiven, resolved, perTarget))
+	if footer := b.budgetFooter(totalGiven, resolved, perTarget); footer != "" {
+		lines = append(lines, "", footer)
+	}
 	b.reply(ctx, channelID, strings.Join(lines, "\n"))
 }
 
 // budgetFooter renders the giver's remaining daily budget: the total and
-// the share for each resolved target.
+// the share for each resolved target. Unlimited budgets are omitted, so
+// the footer is empty when nothing is limited.
 func (b *Bot) budgetFooter(
 	totalGiven int,
 	targets []resolvedTarget,
 	perTarget map[string]int,
 ) string {
-	parts := []string{
-		b.msg.budgetsPrefix(b.limits.DailyTotal-totalGiven, b.limits.DailyTotal),
-	}
-	for _, t := range targets {
-		used := perTarget[t.userID]
+	parts := []string{}
+	if b.limits.DailyTotal > 0 {
 		parts = append(parts,
-			b.msg.budgetsTarget(t.username, b.limits.DailyPerTarget-used, b.limits.DailyPerTarget))
+			b.msg.budgetsPrefix(b.limits.DailyTotal-totalGiven, b.limits.DailyTotal))
+	}
+	if b.limits.DailyPerTarget > 0 {
+		for _, t := range targets {
+			used := perTarget[t.userID]
+			parts = append(parts,
+				b.msg.budgetsTarget(t.username, b.limits.DailyPerTarget-used, b.limits.DailyPerTarget))
+		}
 	}
 	return strings.Join(parts, " · ")
 }

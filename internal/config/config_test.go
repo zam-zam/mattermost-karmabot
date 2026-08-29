@@ -30,6 +30,25 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
+// TestLoadExplicitZeroMeansUnlimited pins that 0 is a valid, explicit
+// choice distinct from the 5/2 defaults.
+func TestLoadExplicitZeroMeansUnlimited(t *testing.T) {
+	setBaseEnv(t)
+	t.Setenv("KARMABOT_DAILY_TOTAL_LIMIT", "0")
+	t.Setenv("KARMABOT_DAILY_PER_TARGET_LIMIT", "0")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DailyTotalLimit != 0 {
+		t.Errorf("DailyTotalLimit = %d, want 0 (unlimited)", cfg.DailyTotalLimit)
+	}
+	if cfg.DailyPerTargetLimit != 0 {
+		t.Errorf("DailyPerTargetLimit = %d, want 0 (unlimited)", cfg.DailyPerTargetLimit)
+	}
+}
+
 func TestLoadCustomLimits(t *testing.T) {
 	setBaseEnv(t)
 	t.Setenv("KARMABOT_DAILY_TOTAL_LIMIT", "7")
@@ -55,8 +74,8 @@ func TestLoadRejectsBadLimits(t *testing.T) {
 		wantInErr string
 	}{
 		{
-			name:      "zero total",
-			total:     "0",
+			name:      "negative total",
+			total:     "-1",
 			perTarget: "1",
 			wantInErr: "KARMABOT_DAILY_TOTAL_LIMIT",
 		},

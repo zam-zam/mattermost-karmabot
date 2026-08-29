@@ -18,21 +18,27 @@ import (
 const topLimit = 10
 
 // Limits are the per-day karma budgets one giver has in a channel,
-// refreshed every UTC calendar day.
+// refreshed every UTC calendar day. Zero means unlimited.
 type Limits struct {
 	DailyTotal     int
 	DailyPerTarget int
 }
 
-// validate rejects limit sets that would break or dead-end granting.
+// validate rejects limit sets that could not take effect.
 func (l Limits) validate() error {
-	if l.DailyTotal < 1 {
-		return fmt.Errorf("daily total limit must be at least 1, got %d", l.DailyTotal)
+	if l.DailyTotal < 0 {
+		return fmt.Errorf(
+			"daily total limit must be 0 (unlimited) or positive, got %d",
+			l.DailyTotal,
+		)
 	}
-	if l.DailyPerTarget < 1 {
-		return fmt.Errorf("daily per-target limit must be at least 1, got %d", l.DailyPerTarget)
+	if l.DailyPerTarget < 0 {
+		return fmt.Errorf(
+			"daily per-target limit must be 0 (unlimited) or positive, got %d",
+			l.DailyPerTarget,
+		)
 	}
-	if l.DailyPerTarget > l.DailyTotal {
+	if l.DailyTotal > 0 && l.DailyPerTarget > l.DailyTotal {
 		return fmt.Errorf(
 			"daily per-target limit (%d) must not exceed the daily total (%d)",
 			l.DailyPerTarget,
@@ -40,6 +46,18 @@ func (l Limits) validate() error {
 		)
 	}
 	return nil
+}
+
+// totalExhausted reports whether the daily total budget is spent; an
+// unlimited total never exhausts.
+func (l Limits) totalExhausted(given int) bool {
+	return l.DailyTotal > 0 && given >= l.DailyTotal
+}
+
+// perTargetExhausted reports whether the budget for one target is spent;
+// an unlimited per-target never exhausts.
+func (l Limits) perTargetExhausted(given int) bool {
+	return l.DailyPerTarget > 0 && given >= l.DailyPerTarget
 }
 
 // Client is the Mattermost surface the bot needs; implemented by

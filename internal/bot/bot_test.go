@@ -395,8 +395,8 @@ func TestNewRejectsInvalidLimits(t *testing.T) {
 		name   string
 		limits Limits
 	}{
-		{name: "zero total", limits: Limits{DailyTotal: 0, DailyPerTarget: 1}},
-		{name: "zero per-target", limits: Limits{DailyTotal: 5, DailyPerTarget: 0}},
+		{name: "negative total", limits: Limits{DailyTotal: -1, DailyPerTarget: 1}},
+		{name: "negative per-target", limits: Limits{DailyTotal: 5, DailyPerTarget: -2}},
 		{name: "per-target above total", limits: Limits{DailyTotal: 3, DailyPerTarget: 5}},
 	}
 
@@ -410,4 +410,58 @@ func TestNewRejectsInvalidLimits(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestNewAcceptsUnlimitedLimits pins the zero-means-unlimited contract:
+// either limit may be 0 on its own or both at once.
+func TestNewAcceptsUnlimitedLimits(t *testing.T) {
+	for _, limits := range []Limits{
+		{},
+		{DailyPerTarget: 2},
+		{DailyTotal: 5},
+	} {
+		client := &fakeClient{
+			me: &model.User{Id: "bot-1", Username: "karmabot"},
+		}
+		if _, err := New(client, nil, nil, &Messages{}, limits); err != nil {
+			t.Errorf("New(%+v): %v", limits, err)
+		}
+	}
+}
+
+// TestUnlimitedLimits proves zero limits never cap granting and add no
+// budget footer to replies.
+func TestUnlimitedLimits(t *testing.T) {
+	b, client := newTestBot(t, "en")
+	b.limits = Limits{}
+	startKarma(t, b, "ch1")
+
+	for range 3 {
+		say(t, b, "ch1", "u-alice", "@karmabot ++ @bob")
+	}
+	reply := client.lastReply()
+	wantContains(t, reply, "✅ @bob: +1 (channel karma: ⭐⭐⭐ 3)", "third grant applied")
+	if strings.Contains(reply, "Left today") {
+		t.Errorf("unlimited reply shows a budget footer: %q", reply)
+	}
+}
+
+// TestUnlimitedTotalWithPerTargetLimit caps only the per-target budget:
+// no total line in the footer, and the per-target limit still binds.
+func TestUnlimitedTotalWithPerTargetLimit(t *testing.T) {
+	b, client := newTestBot(t, "ru")
+	b.limits = Limits{DailyPerTarget: 2}
+	startKarma(t, b, "ch1")
+
+	say(t, b, "ch1", "u-alice", "@karmabot ++ @bob")
+	say(t, b, "ch1", "u-alice", "@karmabot ++ @bob")
+	reply := client.lastReply()
+	wantContains(t, reply, "✅ @bob: +1 (карма в канале: ⭐⭐ 2)", "second grant applied")
+	wantContains(t, reply, "@bob: 0 из 2", "per-target budget")
+	if strings.Contains(reply, "Осталось на сегодня") {
+		t.Errorf("unlimited total still shows the total budget: %q", reply)
+	}
+
+	say(t, b, "ch1", "u-alice", "@karmabot ++ @bob")
+	wantContains(t, client.lastReply(), "этому человеку на сегодня хватит", "per-target hit")
 }

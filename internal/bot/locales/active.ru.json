@@ -21,5 +21,9 @@
   "dmUnknown": "Не понял команду. Доступно: `karma` — твоя карма, `help` — справка.",
   "rankedEntry": "{{.Position}}. @{{.Username}} — {{.Stars}}",
   "dmEntry": "• {{.ChannelName}} — {{.Stars}}",
-  "help": "🤖 Карма-бот\n\nКоманды:\n• `@{{.BotUsername}} start` — включить карму в канале\n• `@{{.BotUsername}} stop` — выключить карму в канале\n• `@{{.BotUsername}} ++ @user [@user2 …]` — дать карму (+1 каждому)\n• `@{{.BotUsername}} top` — топ-10 за неделю\n• `@{{.BotUsername}} help` — справка\n\nЛимиты: не больше {{.DailyTotal}} кармы в день, из них не больше {{.DailyPerTarget}} одному человеку.\nНеделя завершается в понедельник в 00:00 UTC — перед этим бот объявит итоги.\nВ личных сообщениях: `karma` — твоя карма по каналам."
+  "limitsLineBoth": "Лимиты: не больше {{.DailyTotal}} кармы в день, из них не больше {{.DailyPerTarget}} одному человеку.",
+  "limitsLineTotal": "Лимиты: не больше {{.DailyTotal}} кармы в день.",
+  "limitsLinePerTarget": "Лимиты: не больше {{.DailyPerTarget}} кармы одному человеку в день.",
+  "limitsLineNone": "Лимитов нет — благодарите на здоровье!",
+  "help": "🤖 Карма-бот\n\nКоманды:\n• `@{{.BotUsername}} start` — включить карму в канале\n• `@{{.BotUsername}} stop` — выключить карму в канале\n• `@{{.BotUsername}} ++ @user [@user2 …]` — дать карму (+1 каждому)\n• `@{{.BotUsername}} top` — топ-10 за неделю\n• `@{{.BotUsername}} help` — справка\n\n{{.LimitsLine}}\nНеделя завершается в понедельник в 00:00 UTC — перед этим бот объявит итоги.\nВ личных сообщениях: `karma` — твоя карма по каналам."
 }

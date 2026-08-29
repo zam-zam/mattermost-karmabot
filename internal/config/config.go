@@ -35,22 +35,22 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
-// validate checks the settings envconfig can't express: limit values that
-// would break or dead-end karma granting.
+// validate checks the settings envconfig can't express: negative limits
+// or a per-target limit that could never bind.
 func (c Config) validate() error {
-	if c.DailyTotalLimit < 1 {
+	if c.DailyTotalLimit < 0 {
 		return fmt.Errorf(
-			"KARMABOT_DAILY_TOTAL_LIMIT must be at least 1, got %d",
+			"KARMABOT_DAILY_TOTAL_LIMIT must be 0 (unlimited) or a positive number, got %d",
 			c.DailyTotalLimit,
 		)
 	}
-	if c.DailyPerTargetLimit < 1 {
+	if c.DailyPerTargetLimit < 0 {
 		return fmt.Errorf(
-			"KARMABOT_DAILY_PER_TARGET_LIMIT must be at least 1, got %d",
+			"KARMABOT_DAILY_PER_TARGET_LIMIT must be 0 (unlimited) or a positive number, got %d",
 			c.DailyPerTargetLimit,
 		)
 	}
-	if c.DailyPerTargetLimit > c.DailyTotalLimit {
+	if c.DailyTotalLimit > 0 && c.DailyPerTargetLimit > c.DailyTotalLimit {
 		return fmt.Errorf(
 			"KARMABOT_DAILY_PER_TARGET_LIMIT (%d) must not exceed KARMABOT_DAILY_TOTAL_LIMIT (%d)",
 			c.DailyPerTargetLimit,

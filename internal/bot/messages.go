@@ -179,12 +179,31 @@ func (m *Messages) dmEntry(channelName, stars string) string {
 	})
 }
 
-func (m *Messages) help(botUsername string, dailyTotal, dailyPerTarget int) string {
+func (m *Messages) help(botUsername string, limits Limits) string {
 	return m.t("help", map[string]any{
-		"BotUsername":    botUsername,
-		"DailyTotal":     dailyTotal,
-		"DailyPerTarget": dailyPerTarget,
+		"BotUsername": botUsername,
+		"LimitsLine":  m.limitsLine(limits),
 	})
+}
+
+// limitsLine renders the help sentence describing the daily limits,
+// adapting to which of them are set.
+func (m *Messages) limitsLine(limits Limits) string {
+	switch {
+	case limits.DailyTotal > 0 && limits.DailyPerTarget > 0:
+		return m.t("limitsLineBoth", map[string]any{
+			"DailyTotal":     limits.DailyTotal,
+			"DailyPerTarget": limits.DailyPerTarget,
+		})
+	case limits.DailyTotal > 0:
+		return m.t("limitsLineTotal", map[string]any{"DailyTotal": limits.DailyTotal})
+	case limits.DailyPerTarget > 0:
+		return m.t("limitsLinePerTarget", map[string]any{
+			"DailyPerTarget": limits.DailyPerTarget,
+		})
+	default:
+		return m.t("limitsLineNone", nil)
+	}
 }
 
 // top renders the current week's leaderboard for a channel.
