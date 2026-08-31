@@ -48,7 +48,7 @@ func (b *Bot) handleChannel(
 	default:
 		// Includes a bare mention and unknown verbs: show the cheat sheet.
 		b.reply(ctx, channel.Id,
-			b.msg.help(b.botUsername, b.limits))
+			b.msg.help(b.botUsername, b.limits, b.period))
 	}
 }
 
@@ -59,7 +59,7 @@ func (b *Bot) handleDirect(ctx context.Context, post *model.Post) {
 		b.cmdMyKarma(ctx, post.ChannelId, post.UserId)
 	case "help":
 		b.reply(ctx, post.ChannelId,
-			b.msg.help(b.botUsername, b.limits))
+			b.msg.help(b.botUsername, b.limits, b.period))
 	default:
 		b.reply(ctx, post.ChannelId, b.msg.dmUnknown())
 	}
@@ -102,7 +102,7 @@ func (b *Bot) cmdTop(ctx context.Context, channelID string) {
 		return
 	}
 
-	entries, err := b.store.TopByKarma(ctx, channelID, WeekKey(b.now()), topLimit)
+	entries, err := b.store.TopByKarma(ctx, channelID, b.period.Key(b.now()), topLimit)
 	if err != nil {
 		b.internal(ctx, channelID, err, "reading top karma")
 		return
@@ -146,7 +146,7 @@ func (b *Bot) cmdGrant(
 	}
 
 	now := b.now()
-	week := WeekKey(now)
+	week := b.period.Key(now)
 	day := DayKey(now)
 
 	totalGiven, perTarget, err := b.store.GivenOnDay(ctx, channelID, post.UserId, day)
@@ -229,7 +229,7 @@ func (b *Bot) budgetFooter(
 }
 
 func (b *Bot) cmdMyKarma(ctx context.Context, channelID, userID string) {
-	entries, err := b.store.UserKarmaByChannel(ctx, userID, WeekKey(b.now()))
+	entries, err := b.store.UserKarmaByChannel(ctx, userID, b.period.Key(b.now()))
 	if err != nil {
 		b.internal(ctx, channelID, err, "reading user karma")
 		return

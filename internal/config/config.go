@@ -19,6 +19,7 @@ type Config struct {
 	Language            string `envconfig:"LANGUAGE" default:"en"`
 	DailyTotalLimit     int    `envconfig:"DAILY_TOTAL_LIMIT" default:"5"`
 	DailyPerTargetLimit int    `envconfig:"DAILY_PER_TARGET_LIMIT" default:"2"`
+	PeriodDays          int    `envconfig:"PERIOD_DAYS" default:"30"`
 }
 
 // Load reads the optional .env file and then processes environment variables.
@@ -55,6 +56,12 @@ func (c Config) validate() error {
 			"KARMABOT_DAILY_PER_TARGET_LIMIT (%d) must not exceed KARMABOT_DAILY_TOTAL_LIMIT (%d)",
 			c.DailyPerTargetLimit,
 			c.DailyTotalLimit,
+		)
+	}
+	if c.PeriodDays < 1 || c.PeriodDays > 365 {
+		return fmt.Errorf(
+			"KARMABOT_PERIOD_DAYS must be between 1 and 365, got %d",
+			c.PeriodDays,
 		)
 	}
 	return nil

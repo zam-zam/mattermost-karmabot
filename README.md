@@ -1,15 +1,16 @@
 # karmabot
 
 A karma bot for [Mattermost](https://mattermost.com) (tested against 10.10.x).
-Teammates thank each other by mentioning the bot; the bot tracks weekly,
-per-channel karma scores with daily limits, and announces the week's results
-before the Monday reset.
+Teammates thank each other by mentioning the bot; the bot tracks per-channel
+karma scores over rolling periods (30 days by default) with daily limits, and
+announces the period's results at each rollover.
 
 - Bot replies are localized: **English by default**, Russian via
   `KARMABOT_LANGUAGE=ru`; commands are English-only.
 - One SQLite file stores everything; karma is isolated per channel.
-- The week rolls over at **Monday 00:00 UTC** (soft reset: history is kept,
-  new karma starts a fresh week).
+- Karma periods roll over every **30 days by default** at 00:00 UTC
+  (`KARMABOT_PERIOD_DAYS`; soft reset: history is kept, each period starts a
+  fresh scoreboard).
 
 ## Commands
 
@@ -20,14 +21,14 @@ In a channel (invite `@karmabot` first):
 | `@karmabot start` | Enable karma in the channel |
 | `@karmabot stop` | Pause karma (data kept; `start` resumes the week) |
 | `@karmabot ++ @user [@user2 …]` | Give +1 karma to each mentioned user |
-| `@karmabot top` | Top-10 for the current week |
+| `@karmabot top` | Top-10 for the current period |
 | `@karmabot help` | Cheat sheet |
 
 In a direct message to the bot:
 
 | Command | Effect |
 | --- | --- |
-| `karma` | Your karma for the current week, per channel |
+| `karma` | Your karma for the current period, per channel |
 | `help` | Cheat sheet |
 
 ### Limits
@@ -49,11 +50,19 @@ Scores everywhere (grant replies, `top`, weekly summary, DM report) are
 shown as stars: one star per point, then the total — e.g. 3 karma renders
 as `⭐⭐⭐ 3`.
 
-### Weekly summary
+### Period summary
 
-At Monday 00:00 UTC the bot posts the finished week's top-5 to every enabled
+At each period rollover (every `KARMABOT_PERIOD_DAYS` days, 30 by default,
+at 00:00 UTC) the bot posts the finished period's top-5 to every enabled
 channel that had any karma. New karma after that moment counts toward the
-new week.
+new period.
+
+> **Upgrade note:** the default period changed from 7 days to 30. Set
+> `KARMABOT_PERIOD_DAYS=7` to keep weekly scoreboards — with 7 the period
+> keys are identical to the old weekly ones, so existing data carries over
+> seamlessly. Changing the period length on an existing database starts a
+> fresh scoreboard: older rows are kept but no longer shown, and the bot
+> logs a warning at startup about the ignored rows.
 
 ## Setup
 
@@ -78,6 +87,7 @@ KARMABOT_LOG_LEVEL=info               # default
 KARMABOT_LANGUAGE=en                  # default; ru for Russian replies
 KARMABOT_DAILY_TOTAL_LIMIT=5          # default; 0 = unlimited
 KARMABOT_DAILY_PER_TARGET_LIMIT=2     # default; 0 = unlimited
+KARMABOT_PERIOD_DAYS=30               # default; 7 = old weekly behavior
 ```
 
 ### 3. Run
@@ -116,5 +126,5 @@ internal/config/       envconfig + .env loading
 internal/storage/      SQLite schema and queries
 internal/mmclient/     Mattermost REST + WebSocket client with reconnect
 internal/bot/          event routing, commands, localized messages, periods
-internal/scheduler/    Monday 00:00 UTC weekly summary
+internal/scheduler/    period-rollover summary
 ```

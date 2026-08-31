@@ -1,5 +1,5 @@
-// Package scheduler posts the weekly karma summary to every enabled
-// channel at the Monday 00:00 UTC rollover.
+// Package scheduler posts the period summary to every enabled channel
+// at each period rollover (every KARMABOT_PERIOD_DAYS days at 00:00 UTC).
 package scheduler
 
 import (
@@ -11,7 +11,7 @@ import (
 	"karmabot/internal/storage"
 )
 
-// weeklyTopLimit is how many leaders the end-of-week message shows.
+// weeklyTopLimit is how many leaders the end-of-period message shows.
 const weeklyTopLimit = 5
 
 // Store is the storage surface the scheduler needs.
@@ -30,40 +30,43 @@ type Poster interface {
 	CreatePost(ctx context.Context, channelID, message string) error
 }
 
-// Scheduler publishes the finished week's top list when the period ends.
-// The reset itself is implicit: karma is keyed by week, so new karma
-// after the rollover lands in the fresh week automatically.
+// Scheduler publishes the finished period's top list when the period
+// ends. The reset itself is implicit: karma is keyed by period, so new
+// karma after the rollover lands in the fresh period automatically.
 type Scheduler struct {
 	store  Store
 	poster Poster
 	msgs   *bot.Messages
+	period bot.Period
 	log    *slog.Logger
 	now    func() time.Time
 }
 
 // New creates the scheduler; summaries are rendered by msgs in the
-// configured language.
+// configured language and periods follow the configured length.
 func New(
 	store Store,
 	poster Poster,
 	log *slog.Logger,
 	msgs *bot.Messages,
+	period bot.Period,
 ) *Scheduler {
 	return &Scheduler{
 		store:  store,
 		poster: poster,
 		msgs:   msgs,
+		period: period,
 		log:    log,
 		now:    time.Now,
 	}
 }
 
-// Run blocks until ctx is cancelled, publishing a summary at every weekly
-// rollover.
+// Run blocks until ctx is cancelled, publishing a summary at every
+// period rollover.
 func (s *Scheduler) Run(ctx context.Context) {
 	for {
-		next := bot.NextWeeklyReset(s.now())
-		s.log.Info("weekly summary scheduled", "at", next.Format(time.RFC3339))
+		next := s.period.NextReset(s.now())
+		s.log.Info("period summary scheduled", "at", next.Format(time.RFC3339))
 
 		timer := time.NewTimer(time.Until(next))
 		select {
@@ -79,25 +82,25 @@ func (s *Scheduler) Run(ctx context.Context) {
 
 func (s *Scheduler) publishFinishedWeek(ctx context.Context) {
 	now := s.now()
-	finishedWeek := bot.PreviousWeekKey(now)
+	finishedPeriod := s.period.PreviousKey(now)
 
 	channels, err := s.store.EnabledChannels(ctx)
 	if err != nil {
-		s.log.Error("listing channels for weekly summary", "err", err)
+		s.log.Error("listing channels for period summary", "err", err)
 	}
 
 	for _, ch := range channels {
-		top, err := s.store.TopByKarma(ctx, ch.ID, finishedWeek, weeklyTopLimit)
+		top, err := s.store.TopByKarma(ctx, ch.ID, finishedPeriod, weeklyTopLimit)
 		if err != nil {
-			s.log.Error("reading weekly top", "err", err, "channel_id", ch.ID)
+			s.log.Error("reading period top", "err", err, "channel_id", ch.ID)
 			continue
 		}
 		if len(top) == 0 {
 			continue
 		}
 
-		if err := s.poster.CreatePost(ctx, ch.ID, s.msgs.WeeklyTop(top)); err != nil {
-			s.log.Error("posting weekly summary", "err", err, "channel_id", ch.ID)
+		if err := s.poster.CreatePost(ctx, ch.ID, s.msgs.PeriodTop(top)); err != nil {
+			s.log.Error("posting period summary", "err", err, "channel_id", ch.ID)
 		}
 	}
 

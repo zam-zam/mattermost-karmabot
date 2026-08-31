@@ -68,6 +68,16 @@ func (m *Messages) t(id string, data map[string]any) string {
 	})
 }
 
+// tPlural localizes a message that has plural forms, choosing the form
+// for count.
+func (m *Messages) tPlural(id string, data map[string]any, count int) string {
+	return m.loc.MustLocalize(&i18n.LocalizeConfig{
+		MessageID:    id,
+		TemplateData: data,
+		PluralCount:  count,
+	})
+}
+
 func (m *Messages) started(botUsername string) string {
 	return m.t("started", map[string]any{"BotUsername": botUsername})
 }
@@ -148,8 +158,8 @@ func (m *Messages) topEmpty() string {
 	return m.t("topEmpty", nil)
 }
 
-func (m *Messages) weeklyHeader() string {
-	return m.t("weeklyHeader", nil)
+func (m *Messages) periodHeader() string {
+	return m.t("periodHeader", nil)
 }
 
 func (m *Messages) dmHeader() string {
@@ -179,11 +189,18 @@ func (m *Messages) dmEntry(channelName, stars string) string {
 	})
 }
 
-func (m *Messages) help(botUsername string, limits Limits) string {
+func (m *Messages) help(botUsername string, limits Limits, period Period) string {
 	return m.t("help", map[string]any{
 		"BotUsername": botUsername,
 		"LimitsLine":  m.limitsLine(limits),
+		"PeriodLine":  m.periodLine(period),
 	})
+}
+
+// periodLine renders the help sentence about period length and rollover,
+// with the grammatical plural form for the day count.
+func (m *Messages) periodLine(period Period) string {
+	return m.tPlural("periodLine", map[string]any{"PeriodDays": period.Days}, period.Days)
 }
 
 // limitsLine renders the help sentence describing the daily limits,
@@ -206,15 +223,15 @@ func (m *Messages) limitsLine(limits Limits) string {
 	}
 }
 
-// top renders the current week's leaderboard for a channel.
+// top renders the current period's leaderboard for a channel.
 func (m *Messages) top(limit int, entries []storage.KarmaEntry) string {
 	return m.formatRanked(m.topHeader(limit), entries)
 }
 
-// WeeklyTop renders the end-of-week message the scheduler posts to each
-// channel.
-func (m *Messages) WeeklyTop(entries []storage.KarmaEntry) string {
-	return m.formatRanked(m.weeklyHeader(), entries)
+// PeriodTop renders the end-of-period message the scheduler posts to
+// each channel.
+func (m *Messages) PeriodTop(entries []storage.KarmaEntry) string {
+	return m.formatRanked(m.periodHeader(), entries)
 }
 
 // dmReport renders the direct-message summary of a user's karma per

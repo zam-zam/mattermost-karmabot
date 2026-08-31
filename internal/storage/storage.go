@@ -303,6 +303,29 @@ func (s *Store) UserKarmaByChannel(
 	return entries, rows.Err()
 }
 
+// KarmaWeekCounts returns the number of karma rows per stored period
+// key, used at startup to detect rows written under a different period
+// length.
+func (s *Store) KarmaWeekCounts(ctx context.Context) (map[string]int, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT week, COUNT(*) FROM karma GROUP BY week`)
+	if err != nil {
+		return nil, fmt.Errorf("counting karma per week: %w", err)
+	}
+	defer rows.Close()
+
+	counts := map[string]int{}
+	for rows.Next() {
+		var week string
+		var count int
+		if err := rows.Scan(&week, &count); err != nil {
+			return nil, fmt.Errorf("scanning karma week count: %w", err)
+		}
+		counts[week] = count
+	}
+	return counts, rows.Err()
+}
+
 // PruneDailyGiven deletes daily budget rows strictly older than the given
 // day key.
 func (s *Store) PruneDailyGiven(ctx context.Context, day string) error {

@@ -212,6 +212,54 @@ func TestDisableKeepsKarmaAndUserKarmaByChannel(t *testing.T) {
 	}
 }
 
+func TestKarmaWeekCounts(t *testing.T) {
+	ctx := context.Background()
+	store := openTestStore(t)
+
+	// Rows are keyed by (channel, user, week), so counts follow distinct
+	// users per week, not repeated grants.
+	grants := []struct {
+		week    string
+		targets []string
+	}{
+		{week: "2026-08-24", targets: []string{"bob", "carol"}},
+		{week: "2026-08-17", targets: []string{"bob"}},
+		{week: "2026-08-18", targets: []string{"bob", "carol", "dave"}},
+	}
+	for _, g := range grants {
+		for _, target := range g.targets {
+			if _, err := store.GrantKarma(ctx, Grant{
+				ChannelID:      "ch1",
+				Week:           g.week,
+				Day:            "2026-08-26",
+				GiverID:        "alice",
+				TargetID:       target,
+				TargetUsername: target,
+			}); err != nil {
+				t.Fatalf("GrantKarma(%s, %s): %v", g.week, target, err)
+			}
+		}
+	}
+
+	counts, err := store.KarmaWeekCounts(ctx)
+	if err != nil {
+		t.Fatalf("KarmaWeekCounts: %v", err)
+	}
+	want := map[string]int{
+		"2026-08-24": 2,
+		"2026-08-17": 1,
+		"2026-08-18": 3,
+	}
+	if len(counts) != len(want) {
+		t.Fatalf("KarmaWeekCounts = %v, want %v", counts, want)
+	}
+	for week, count := range want {
+		if counts[week] != count {
+			t.Errorf("counts[%q] = %d, want %d", week, counts[week], count)
+		}
+	}
+}
+
 func TestPruneDailyGiven(t *testing.T) {
 	ctx := context.Background()
 	store := openTestStore(t)

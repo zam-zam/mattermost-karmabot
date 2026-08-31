@@ -97,11 +97,15 @@ func newTestBot(t *testing.T, lang string) (*Bot, *fakeClient) {
 	if err != nil {
 		t.Fatalf("NewMessages(%q): %v", lang, err)
 	}
-	b, err := New(client, store, log, msgs, Limits{DailyTotal: 5, DailyPerTarget: 2})
+	b, err := New(client, store, log, Options{
+		Messages: msgs,
+		Limits:   Limits{DailyTotal: 5, DailyPerTarget: 2},
+		Period:   Period{Days: 7},
+	})
 	if err != nil {
 		t.Fatalf("bot.New: %v", err)
 	}
-	// Wednesday 2026-08-26 so WeekKey/DayKey are stable in tests.
+	// Wednesday 2026-08-26 so period and day keys are stable in tests.
 	b.now = func() time.Time {
 		return time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
 	}
@@ -254,7 +258,7 @@ func TestDirectMessages(t *testing.T) {
 
 	say(t, b, "dm", "u-bob", "karma")
 	reply := client.lastReply()
-	wantContains(t, reply, "Твоя карма за текущую неделю", "dm header")
+	wantContains(t, reply, "Твоя карма за текущий период", "dm header")
 	wantContains(t, reply, "• dev — ⭐ 1", "dm entry")
 
 	say(t, b, "dm", "u-bob", "help")
@@ -366,7 +370,7 @@ func TestEnglishReplies(t *testing.T) {
 
 	say(t, b, "dm", "u-bob", "karma")
 	reply = client.lastReply()
-	wantContains(t, reply, "Your karma this week", "dm header")
+	wantContains(t, reply, "Your karma this period", "dm header")
 	wantContains(t, reply, "• dev — ⭐ 1", "dm entry")
 
 	say(t, b, "dm", "u-bob", "what?")
@@ -405,10 +409,41 @@ func TestNewRejectsInvalidLimits(t *testing.T) {
 			client := &fakeClient{
 				me: &model.User{Id: "bot-1", Username: "karmabot"},
 			}
-			if _, err := New(client, nil, nil, &Messages{}, tt.limits); err == nil {
+			opts := Options{
+				Messages: &Messages{},
+				Limits:   tt.limits,
+				Period:   Period{Days: 7},
+			}
+			if _, err := New(client, nil, nil, opts); err == nil {
 				t.Error("New succeeded with invalid limits, want error")
 			}
 		})
+	}
+}
+
+func TestNewRejectsInvalidPeriodAndNilMessages(t *testing.T) {
+	client := &fakeClient{
+		me: &model.User{Id: "bot-1", Username: "karmabot"},
+	}
+
+	for _, days := range []int{0, 366} {
+		opts := Options{
+			Messages: &Messages{},
+			Limits:   Limits{DailyTotal: 5, DailyPerTarget: 2},
+			Period:   Period{Days: days},
+		}
+		if _, err := New(client, nil, nil, opts); err == nil {
+			t.Errorf("New with Period{Days:%d} succeeded, want error", days)
+		}
+	}
+
+	opts := Options{
+		Messages: nil,
+		Limits:   Limits{DailyTotal: 5, DailyPerTarget: 2},
+		Period:   Period{Days: 7},
+	}
+	if _, err := New(client, nil, nil, opts); err == nil {
+		t.Error("New with nil Messages succeeded, want error")
 	}
 }
 
@@ -423,7 +458,12 @@ func TestNewAcceptsUnlimitedLimits(t *testing.T) {
 		client := &fakeClient{
 			me: &model.User{Id: "bot-1", Username: "karmabot"},
 		}
-		if _, err := New(client, nil, nil, &Messages{}, limits); err != nil {
+		opts := Options{
+			Messages: &Messages{},
+			Limits:   limits,
+			Period:   Period{Days: 7},
+		}
+		if _, err := New(client, nil, nil, opts); err != nil {
 			t.Errorf("New(%+v): %v", limits, err)
 		}
 	}
@@ -464,4 +504,27 @@ func TestUnlimitedTotalWithPerTargetLimit(t *testing.T) {
 
 	say(t, b, "ch1", "u-alice", "@karmabot ++ @bob")
 	wantContains(t, client.lastReply(), "этому человеку на сегодня хватит", "per-target hit")
+}
+
+// TestThirtyDayPeriodFlow proves a longer period keeps karma across week
+// boundaries: karma granted on 2026-08-26 is still on the scoreboard on
+// 2026-09-10, which belongs to a different week but the same 30-day
+// period (2026-08-18 … 2026-09-17).
+func TestThirtyDayPeriodFlow(t *testing.T) {
+	b, client := newTestBot(t, "en")
+	b.period = Period{Days: 30}
+	startKarma(t, b, "ch1")
+
+	say(t, b, "ch1", "u-alice", "@karmabot ++ @bob")
+	say(t, b, "ch1", "u-alice", "@karmabot top")
+	wantContains(t, client.lastReply(), "1. @bob — ⭐ 1", "top in the same period")
+
+	b.now = func() time.Time {
+		return time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	}
+	say(t, b, "ch1", "u-alice", "@karmabot top")
+	wantContains(t, client.lastReply(), "1. @bob — ⭐ 1", "top persists across the week boundary")
+
+	say(t, b, "dm", "u-bob", "karma")
+	wantContains(t, client.lastReply(), "• dev — ⭐ 1", "dm report persists")
 }

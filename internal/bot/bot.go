@@ -76,24 +76,37 @@ type Bot struct {
 	log         *slog.Logger
 	msg         *Messages
 	limits      Limits
+	period      Period
 	botUsername string
 	botID       string
 	now         func() time.Time
 }
 
+// Options carries the bot's configurable behavior set at startup.
+type Options struct {
+	Messages *Messages
+	Limits   Limits
+	Period   Period
+}
+
 // New creates the bot, taking its identity from the client so it can
 // filter out its own posts and recognize its mentions. Replies are
-// rendered by msg in the configured language; granting is capped by
-// limits.
+// rendered by Messages in the configured language; granting is capped by
+// Limits and scoreboards cycle per Period.
 func New(
 	client Client,
 	store *storage.Store,
 	log *slog.Logger,
-	msg *Messages,
-	limits Limits,
+	opts Options,
 ) (*Bot, error) {
-	if err := limits.validate(); err != nil {
+	if err := opts.Limits.validate(); err != nil {
 		return nil, fmt.Errorf("invalid limits: %w", err)
+	}
+	if err := opts.Period.validate(); err != nil {
+		return nil, fmt.Errorf("invalid period: %w", err)
+	}
+	if opts.Messages == nil {
+		return nil, fmt.Errorf("messages must not be nil")
 	}
 
 	me := client.Me()
@@ -104,8 +117,9 @@ func New(
 		client:      client,
 		store:       store,
 		log:         log,
-		msg:         msg,
-		limits:      limits,
+		msg:         opts.Messages,
+		limits:      opts.Limits,
+		period:      opts.Period,
 		botUsername: me.Username,
 		botID:       me.Id,
 		now:         time.Now,

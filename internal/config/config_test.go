@@ -28,6 +28,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.DailyPerTargetLimit != 2 {
 		t.Errorf("DailyPerTargetLimit = %d, want 2", cfg.DailyPerTargetLimit)
 	}
+	if cfg.PeriodDays != 30 {
+		t.Errorf("PeriodDays = %d, want 30", cfg.PeriodDays)
+	}
 }
 
 // TestLoadExplicitZeroMeansUnlimited pins that 0 is a valid, explicit
@@ -111,6 +114,23 @@ func TestLoadRejectsBadLimits(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.wantInErr) {
 				t.Errorf("error %q does not mention %q", err, tt.wantInErr)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsBadPeriod(t *testing.T) {
+	for _, value := range []string{"0", "366", "many"} {
+		t.Run(value, func(t *testing.T) {
+			setBaseEnv(t)
+			t.Setenv("KARMABOT_PERIOD_DAYS", value)
+
+			_, err := Load()
+			if err == nil {
+				t.Fatal("Load succeeded with a bad period, want error")
+			}
+			if !strings.Contains(err.Error(), "KARMABOT_PERIOD_DAYS") {
+				t.Errorf("error %q does not mention KARMABOT_PERIOD_DAYS", err)
 			}
 		})
 	}
