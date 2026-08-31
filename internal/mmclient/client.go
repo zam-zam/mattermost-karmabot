@@ -106,10 +106,12 @@ func (c *Client) GetUserByUsername(ctx context.Context, username string) (*model
 	return user, nil
 }
 
-// CreatePost posts a plain message to the channel.
-func (c *Client) CreatePost(ctx context.Context, channelID, message string) error {
+// CreatePost posts a plain message, threading it under rootID when it is
+// non-empty.
+func (c *Client) CreatePost(ctx context.Context, channelID, rootID, message string) error {
 	post := &model.Post{
 		ChannelId: channelID,
+		RootId:    rootID,
 		Message:   message,
 	}
 	if _, _, err := c.api.CreatePost(ctx, post); err != nil {

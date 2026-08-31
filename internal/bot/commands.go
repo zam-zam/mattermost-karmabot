@@ -33,39 +33,43 @@ func (b *Bot) handleChannel(
 		return
 	}
 
+	th := thread{channelID: post.ChannelId, rootID: threadRoot(post)}
+
 	verb, args := splitVerb(rest)
 	switch verb {
 	case verbStart:
-		b.cmdStart(ctx, channel)
+		b.cmdStart(ctx, channel, th)
 	case verbStop:
-		b.cmdStop(ctx, channel.Id)
+		b.cmdStop(ctx, th)
 	case verbTop:
-		b.cmdTop(ctx, channel.Id)
+		b.cmdTop(ctx, th)
 	case verbGrant:
-		b.cmdGrant(ctx, channel.Id, post, args)
+		b.cmdGrant(ctx, th, post, args)
 	case "--":
-		b.reply(ctx, channel.Id, b.msg.noNegative())
+		b.reply(ctx, th, b.msg.noNegative())
 	default:
 		// Includes a bare mention and unknown verbs: show the cheat sheet.
-		b.reply(ctx, channel.Id,
+		b.reply(ctx, th,
 			b.msg.help(b.botUsername, b.limits, b.period))
 	}
 }
 
 // handleDirect dispatches a direct message to the bot.
 func (b *Bot) handleDirect(ctx context.Context, post *model.Post) {
+	th := thread{channelID: post.ChannelId, rootID: threadRoot(post)}
+
 	switch strings.ToLower(strings.TrimSpace(post.Message)) {
 	case "karma":
-		b.cmdMyKarma(ctx, post.ChannelId, post.UserId)
+		b.cmdMyKarma(ctx, th, post.UserId)
 	case "help":
-		b.reply(ctx, post.ChannelId,
+		b.reply(ctx, th,
 			b.msg.help(b.botUsername, b.limits, b.period))
 	default:
-		b.reply(ctx, post.ChannelId, b.msg.dmUnknown())
+		b.reply(ctx, th, b.msg.dmUnknown())
 	}
 }
 
-func (b *Bot) cmdStart(ctx context.Context, channel *model.Channel) {
+func (b *Bot) cmdStart(ctx context.Context, channel *model.Channel, th thread) {
 	name := channel.DisplayName
 	if name == "" {
 		name = channel.Name
@@ -77,41 +81,41 @@ func (b *Bot) cmdStart(ctx context.Context, channel *model.Channel) {
 		Name:   name,
 	})
 	if err != nil {
-		b.internal(ctx, channel.Id, err, "enabling channel")
+		b.internal(ctx, th, err, "enabling channel")
 		return
 	}
-	b.reply(ctx, channel.Id, b.msg.started(b.botUsername))
+	b.reply(ctx, th, b.msg.started(b.botUsername))
 }
 
-func (b *Bot) cmdStop(ctx context.Context, channelID string) {
-	if err := b.store.DisableChannel(ctx, channelID); err != nil {
-		b.internal(ctx, channelID, err, "disabling channel")
+func (b *Bot) cmdStop(ctx context.Context, th thread) {
+	if err := b.store.DisableChannel(ctx, th.channelID); err != nil {
+		b.internal(ctx, th, err, "disabling channel")
 		return
 	}
-	b.reply(ctx, channelID, b.msg.stopped())
+	b.reply(ctx, th, b.msg.stopped())
 }
 
-func (b *Bot) cmdTop(ctx context.Context, channelID string) {
-	enabled, err := b.store.IsChannelEnabled(ctx, channelID)
+func (b *Bot) cmdTop(ctx context.Context, th thread) {
+	enabled, err := b.store.IsChannelEnabled(ctx, th.channelID)
 	if err != nil {
-		b.internal(ctx, channelID, err, "checking channel state")
+		b.internal(ctx, th, err, "checking channel state")
 		return
 	}
 	if !enabled {
-		b.reply(ctx, channelID, b.msg.notStarted(b.botUsername))
+		b.reply(ctx, th, b.msg.notStarted(b.botUsername))
 		return
 	}
 
-	entries, err := b.store.TopByKarma(ctx, channelID, b.period.Key(b.now()), topLimit)
+	entries, err := b.store.TopByKarma(ctx, th.channelID, b.period.Key(b.now()), topLimit)
 	if err != nil {
-		b.internal(ctx, channelID, err, "reading top karma")
+		b.internal(ctx, th, err, "reading top karma")
 		return
 	}
 	if len(entries) == 0 {
-		b.reply(ctx, channelID, b.msg.topEmpty())
+		b.reply(ctx, th, b.msg.topEmpty())
 		return
 	}
-	b.reply(ctx, channelID, b.msg.top(topLimit, entries))
+	b.reply(ctx, th, b.msg.top(topLimit, entries))
 }
 
 // resolvedTarget pairs a mention with its user, for budgets and replies.
@@ -125,23 +129,23 @@ type resolvedTarget struct {
 // budgets.
 func (b *Bot) cmdGrant(
 	ctx context.Context,
-	channelID string,
+	th thread,
 	post *model.Post,
 	args string,
 ) {
-	enabled, err := b.store.IsChannelEnabled(ctx, channelID)
+	enabled, err := b.store.IsChannelEnabled(ctx, th.channelID)
 	if err != nil {
-		b.internal(ctx, channelID, err, "checking channel state")
+		b.internal(ctx, th, err, "checking channel state")
 		return
 	}
 	if !enabled {
-		b.reply(ctx, channelID, b.msg.notStarted(b.botUsername))
+		b.reply(ctx, th, b.msg.notStarted(b.botUsername))
 		return
 	}
 
 	targets := extractMentions(args, b.botUsername)
 	if len(targets) == 0 {
-		b.reply(ctx, channelID, b.msg.noTargets(b.botUsername))
+		b.reply(ctx, th, b.msg.noTargets(b.botUsername))
 		return
 	}
 
@@ -149,9 +153,9 @@ func (b *Bot) cmdGrant(
 	week := b.period.Key(now)
 	day := DayKey(now)
 
-	totalGiven, perTarget, err := b.store.GivenOnDay(ctx, channelID, post.UserId, day)
+	totalGiven, perTarget, err := b.store.GivenOnDay(ctx, th.channelID, post.UserId, day)
 	if err != nil {
-		b.internal(ctx, channelID, err, "reading daily usage")
+		b.internal(ctx, th, err, "reading daily usage")
 		return
 	}
 
@@ -181,7 +185,7 @@ func (b *Bot) cmdGrant(
 				b.msg.perTargetMax(user.Username, b.limits.DailyPerTarget))
 		default:
 			newTotal, err := b.store.GrantKarma(ctx, storage.Grant{
-				ChannelID:      channelID,
+				ChannelID:      th.channelID,
 				Week:           week,
 				Day:            day,
 				GiverID:        post.UserId,
@@ -189,7 +193,7 @@ func (b *Bot) cmdGrant(
 				TargetUsername: user.Username,
 			})
 			if err != nil {
-				b.log.Error("granting karma", "err", err, "channel_id", channelID)
+				b.log.Error("granting karma", "err", err, "channel_id", th.channelID)
 				lines = append(lines, b.msg.grantFailed(user.Username))
 				continue
 			}
@@ -202,7 +206,7 @@ func (b *Bot) cmdGrant(
 	if footer := b.budgetFooter(totalGiven, resolved, perTarget); footer != "" {
 		lines = append(lines, "", footer)
 	}
-	b.reply(ctx, channelID, strings.Join(lines, "\n"))
+	b.reply(ctx, th, strings.Join(lines, "\n"))
 }
 
 // budgetFooter renders the giver's remaining daily budget: the total and
@@ -228,13 +232,13 @@ func (b *Bot) budgetFooter(
 	return strings.Join(parts, " · ")
 }
 
-func (b *Bot) cmdMyKarma(ctx context.Context, channelID, userID string) {
+func (b *Bot) cmdMyKarma(ctx context.Context, th thread, userID string) {
 	entries, err := b.store.UserKarmaByChannel(ctx, userID, b.period.Key(b.now()))
 	if err != nil {
-		b.internal(ctx, channelID, err, "reading user karma")
+		b.internal(ctx, th, err, "reading user karma")
 		return
 	}
-	b.reply(ctx, channelID, b.msg.dmReport(entries))
+	b.reply(ctx, th, b.msg.dmReport(entries))
 }
 
 // stripBotMention splits "‹@bot …rest›" when the message starts with the

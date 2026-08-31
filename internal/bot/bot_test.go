@@ -18,6 +18,7 @@ import (
 
 type sentPost struct {
 	channelID string
+	rootID    string
 	message   string
 }
 
@@ -54,9 +55,10 @@ func (f *fakeClient) GetUserByUsername(
 
 func (f *fakeClient) CreatePost(
 	_ context.Context,
-	channelID, message string,
+	channelID, rootID, message string,
 ) error {
-	f.posts = append(f.posts, sentPost{channelID: channelID, message: message})
+	f.posts = append(f.posts,
+		sentPost{channelID: channelID, rootID: rootID, message: message})
 	return nil
 }
 
@@ -65,6 +67,13 @@ func (f *fakeClient) lastReply() string {
 		return ""
 	}
 	return f.posts[len(f.posts)-1].message
+}
+
+func (f *fakeClient) lastRoot() string {
+	if len(f.posts) == 0 {
+		return ""
+	}
+	return f.posts[len(f.posts)-1].rootID
 }
 
 func newTestBot(t *testing.T, lang string) (*Bot, *fakeClient) {
@@ -112,11 +121,17 @@ func newTestBot(t *testing.T, lang string) (*Bot, *fakeClient) {
 	return b, client
 }
 
-// say delivers a message as userID via a synthetic "posted" event.
-func say(t *testing.T, b *Bot, channelID, userID, message string) {
+var saySeq int
+
+// say delivers a message as userID via a synthetic "posted" event,
+// returning the generated post ID so tests can assert thread roots.
+func say(t *testing.T, b *Bot, channelID, userID, message string) string {
 	t.Helper()
 
+	saySeq++
+	postID := fmt.Sprintf("post-%d", saySeq)
 	raw, err := json.Marshal(&model.Post{
+		Id:        postID,
 		ChannelId: channelID,
 		UserId:    userID,
 		Message:   message,
@@ -129,6 +144,7 @@ func say(t *testing.T, b *Bot, channelID, userID, message string) {
 	// Add mutates in place, unlike SetData which returns a copy.
 	event.Add("post", string(raw))
 	b.HandleEvent(context.Background(), event)
+	return postID
 }
 
 func startKarma(t *testing.T, b *Bot, channelID string) {
@@ -527,4 +543,42 @@ func TestThirtyDayPeriodFlow(t *testing.T) {
 
 	say(t, b, "dm", "u-bob", "karma")
 	wantContains(t, client.lastReply(), "• dev — ⭐ 1", "dm report persists")
+}
+
+// TestRepliesGoToCommandThread pins that every command answer is posted
+// as a reply in the command's thread.
+func TestRepliesGoToCommandThread(t *testing.T) {
+	b, client := newTestBot(t, "en")
+
+	id := say(t, b, "ch1", "u-alice", "@karmabot start")
+	if got := client.lastRoot(); got != id {
+		t.Errorf("start reply root = %q, want %q", got, id)
+	}
+
+	id = say(t, b, "ch1", "u-alice", "@karmabot help")
+	if got := client.lastRoot(); got != id {
+		t.Errorf("help reply root = %q, want %q", got, id)
+	}
+
+	say(t, b, "ch1", "u-alice", "@karmabot ++ @bob")
+	id = say(t, b, "ch1", "u-alice", "@karmabot top")
+	if got := client.lastRoot(); got != id {
+		t.Errorf("top reply root = %q, want %q", got, id)
+	}
+
+	id = say(t, b, "dm", "u-alice", "help")
+	if got := client.lastRoot(); got != id {
+		t.Errorf("dm reply root = %q, want %q", got, id)
+	}
+}
+
+func TestThreadRoot(t *testing.T) {
+	// A channel-top command starts a thread under itself.
+	if got := threadRoot(&model.Post{Id: "p1"}); got != "p1" {
+		t.Errorf("channel-top post root = %q, want p1", got)
+	}
+	// A command sent inside a thread keeps that thread.
+	if got := threadRoot(&model.Post{Id: "p2", RootId: "p1"}); got != "p1" {
+		t.Errorf("in-thread post root = %q, want p1", got)
+	}
 }

@@ -25,9 +25,10 @@ type Store interface {
 	PruneDailyGiven(ctx context.Context, day string) error
 }
 
-// Poster delivers messages to channels.
+// Poster delivers messages to channels; a reply thread root may be
+// given, with an empty root posting a channel-top message.
 type Poster interface {
-	CreatePost(ctx context.Context, channelID, message string) error
+	CreatePost(ctx context.Context, channelID, rootID, message string) error
 }
 
 // Scheduler publishes the finished period's top list when the period
@@ -99,7 +100,8 @@ func (s *Scheduler) publishFinishedWeek(ctx context.Context) {
 			continue
 		}
 
-		if err := s.poster.CreatePost(ctx, ch.ID, s.msgs.PeriodTop(top)); err != nil {
+		// The summary answers no command, so it starts its own thread.
+		if err := s.poster.CreatePost(ctx, ch.ID, "", s.msgs.PeriodTop(top)); err != nil {
 			s.log.Error("posting period summary", "err", err, "channel_id", ch.ID)
 		}
 	}

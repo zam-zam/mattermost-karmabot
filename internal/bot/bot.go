@@ -66,7 +66,24 @@ type Client interface {
 	Me() *model.User
 	GetChannel(ctx context.Context, channelID string) (*model.Channel, error)
 	GetUserByUsername(ctx context.Context, username string) (*model.User, error)
-	CreatePost(ctx context.Context, channelID, message string) error
+	CreatePost(ctx context.Context, channelID, rootID, message string) error
+}
+
+// thread is where a command's reply lands: the channel and the root
+// message of the thread the command belongs to.
+type thread struct {
+	channelID string
+	rootID    string
+}
+
+// threadRoot returns the thread root for replies to post: a command sent
+// inside an existing thread keeps that thread, a channel-top command
+// starts one under itself.
+func threadRoot(post *model.Post) string {
+	if post.RootId != "" {
+		return post.RootId
+	}
+	return post.Id
 }
 
 // Bot turns "posted" events into karma commands.
@@ -170,15 +187,15 @@ func postFromEvent(event *model.WebSocketEvent) *model.Post {
 	return &post
 }
 
-// reply posts a message to the channel, logging failures.
-func (b *Bot) reply(ctx context.Context, channelID, message string) {
-	if err := b.client.CreatePost(ctx, channelID, message); err != nil {
-		b.log.Error("sending reply", "err", err, "channel_id", channelID)
+// reply posts a message into the command's thread, logging failures.
+func (b *Bot) reply(ctx context.Context, th thread, message string) {
+	if err := b.client.CreatePost(ctx, th.channelID, th.rootID, message); err != nil {
+		b.log.Error("sending reply", "err", err, "channel_id", th.channelID)
 	}
 }
 
 // internal reports an infrastructure failure to the log and the user.
-func (b *Bot) internal(ctx context.Context, channelID string, err error, what string) {
-	b.log.Error(what, "err", err, "channel_id", channelID)
-	b.reply(ctx, channelID, b.msg.internalError())
+func (b *Bot) internal(ctx context.Context, th thread, err error, what string) {
+	b.log.Error(what, "err", err, "channel_id", th.channelID)
+	b.reply(ctx, th, b.msg.internalError())
 }

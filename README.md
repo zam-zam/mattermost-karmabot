@@ -8,6 +8,8 @@ announces the period's results at each rollover.
 - Bot replies are localized: **English by default**, Russian via
   `KARMABOT_LANGUAGE=ru`; commands are English-only.
 - One SQLite file stores everything; karma is isolated per channel.
+- The bot always replies in the command's thread; a command sent inside
+  an existing thread stays in it.
 - Karma periods roll over every **7 days by default** at 00:00 UTC
   (`KARMABOT_PERIOD_DAYS`; soft reset: history is kept, each period starts a
   fresh scoreboard).
