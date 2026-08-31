@@ -28,8 +28,8 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.DailyPerTargetLimit != 2 {
 		t.Errorf("DailyPerTargetLimit = %d, want 2", cfg.DailyPerTargetLimit)
 	}
-	if cfg.PeriodDays != 30 {
-		t.Errorf("PeriodDays = %d, want 30", cfg.PeriodDays)
+	if cfg.PeriodDays != 7 {
+		t.Errorf("PeriodDays = %d, want 7", cfg.PeriodDays)
 	}
 }
 

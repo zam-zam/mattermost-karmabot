@@ -19,7 +19,7 @@ type Config struct {
 	Language            string `envconfig:"LANGUAGE" default:"en"`
 	DailyTotalLimit     int    `envconfig:"DAILY_TOTAL_LIMIT" default:"5"`
 	DailyPerTargetLimit int    `envconfig:"DAILY_PER_TARGET_LIMIT" default:"2"`
-	PeriodDays          int    `envconfig:"PERIOD_DAYS" default:"30"`
+	PeriodDays          int    `envconfig:"PERIOD_DAYS" default:"7"`
 }
 
 // Load reads the optional .env file and then processes environment variables.
