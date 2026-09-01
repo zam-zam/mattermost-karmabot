@@ -31,6 +31,61 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.PeriodDays != 7 {
 		t.Errorf("PeriodDays = %d, want 7", cfg.PeriodDays)
 	}
+	if cfg.DBDriver != "sqlite" {
+		t.Errorf("DBDriver = %q, want %q", cfg.DBDriver, "sqlite")
+	}
+}
+
+func TestLoadPostgresDriver(t *testing.T) {
+	setBaseEnv(t)
+	t.Setenv("KARMABOT_DB_DRIVER", "postgres")
+	t.Setenv("KARMABOT_DB_DSN", "postgres://user:pass@localhost:5432/karmabot")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DBDriver != "postgres" || cfg.DBDSN == "" {
+		t.Fatalf("DBDriver=%q DBDSN=%q, want postgres with a DSN", cfg.DBDriver, cfg.DBDSN)
+	}
+}
+
+func TestLoadRejectsBadDBDriver(t *testing.T) {
+	tests := []struct {
+		name      string
+		driver    string
+		dsn       string
+		wantInErr string
+	}{
+		{
+			name:      "unknown driver",
+			driver:    "mysql",
+			wantInErr: "KARMABOT_DB_DRIVER",
+		},
+		{
+			name:      "postgres without dsn",
+			driver:    "postgres",
+			wantInErr: "KARMABOT_DB_DSN",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setBaseEnv(t)
+			t.Setenv("KARMABOT_DB_DRIVER", tt.driver)
+			if tt.dsn != "" {
+				t.Setenv("KARMABOT_DB_DSN", tt.dsn)
+			}
+
+			_, err := Load()
+			if err == nil {
+				t.Fatal("Load succeeded with a bad database config, want error")
+			}
+			if !strings.Contains(err.Error(), tt.wantInErr) {
+				t.Errorf("error %q does not mention %q", err, tt.wantInErr)
+			}
+		})
+	}
 }
 
 // TestLoadExplicitZeroMeansUnlimited pins that 0 is a valid, explicit

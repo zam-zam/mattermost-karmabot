@@ -2,23 +2,52 @@ package storage
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 )
 
-func openTestStore(t *testing.T) *Store {
+// eachStore runs a test body against every configured backend: always
+// SQLite, plus PostgreSQL when KARMABOT_TEST_POSTGRES_DSN points at a
+// throwaway database.
+func eachStore(t *testing.T, fn func(t *testing.T, store *Store)) {
 	t.Helper()
-	store, err := Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
+
+	t.Run("sqlite", func(t *testing.T) {
+		store, err := Open(Options{Path: filepath.Join(t.TempDir(), "test.db")})
+		if err != nil {
+			t.Fatalf("Open: %v", err)
+		}
+		t.Cleanup(func() { store.Close() })
+		fn(t, store)
+	})
+
+	dsn := os.Getenv("KARMABOT_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		return
 	}
-	t.Cleanup(func() { store.Close() })
-	return store
+	t.Run("postgres", func(t *testing.T) {
+		store, err := Open(Options{Driver: "postgres", DSN: dsn})
+		if err != nil {
+			t.Fatalf("Open postgres: %v", err)
+		}
+		t.Cleanup(func() { store.Close() })
+		// The DSN may point at a shared test database; start clean.
+		for _, table := range []string{"karma", "daily_given", "channels"} {
+			if _, err := store.exec(context.Background(), "DELETE FROM "+table); err != nil {
+				t.Fatalf("clearing %s: %v", table, err)
+			}
+		}
+		fn(t, store)
+	})
 }
 
 func TestChannelLifecycle(t *testing.T) {
+	eachStore(t, testChannelLifecycle)
+}
+
+func testChannelLifecycle(t *testing.T, store *Store) {
 	ctx := context.Background()
-	store := openTestStore(t)
 
 	if enabled, err := store.IsChannelEnabled(ctx, "ch1"); err != nil || enabled {
 		t.Fatalf("unknown channel should be disabled, got enabled=%v err=%v", enabled, err)
@@ -57,8 +86,11 @@ func TestChannelLifecycle(t *testing.T) {
 }
 
 func TestGrantKarmaAccumulatesAndReportsDailyUsage(t *testing.T) {
+	eachStore(t, testGrantKarmaAccumulatesAndReportsDailyUsage)
+}
+
+func testGrantKarmaAccumulatesAndReportsDailyUsage(t *testing.T, store *Store) {
 	ctx := context.Background()
-	store := openTestStore(t)
 
 	grant := func(targetID, targetName string) int {
 		t.Helper()
@@ -106,8 +138,11 @@ func TestGrantKarmaAccumulatesAndReportsDailyUsage(t *testing.T) {
 }
 
 func TestTopByKarmaOrdersAndLimits(t *testing.T) {
+	eachStore(t, testTopByKarmaOrdersAndLimits)
+}
+
+func testTopByKarmaOrdersAndLimits(t *testing.T, store *Store) {
 	ctx := context.Background()
-	store := openTestStore(t)
 
 	scores := []struct {
 		id, name string
@@ -160,8 +195,11 @@ func TestTopByKarmaOrdersAndLimits(t *testing.T) {
 }
 
 func TestDisableKeepsKarmaAndUserKarmaByChannel(t *testing.T) {
+	eachStore(t, testDisableKeepsKarmaAndUserKarmaByChannel)
+}
+
+func testDisableKeepsKarmaAndUserKarmaByChannel(t *testing.T, store *Store) {
 	ctx := context.Background()
-	store := openTestStore(t)
 
 	for _, ch := range []string{"ch1", "ch2"} {
 		if err := store.EnableChannel(ctx, Channel{ID: ch, TeamID: "t1", Name: ch + "-name"}); err != nil {
@@ -213,8 +251,11 @@ func TestDisableKeepsKarmaAndUserKarmaByChannel(t *testing.T) {
 }
 
 func TestKarmaWeekCounts(t *testing.T) {
+	eachStore(t, testKarmaWeekCounts)
+}
+
+func testKarmaWeekCounts(t *testing.T, store *Store) {
 	ctx := context.Background()
-	store := openTestStore(t)
 
 	// Rows are keyed by (channel, user, week), so counts follow distinct
 	// users per week, not repeated grants.
@@ -261,8 +302,11 @@ func TestKarmaWeekCounts(t *testing.T) {
 }
 
 func TestPruneDailyGiven(t *testing.T) {
+	eachStore(t, testPruneDailyGiven)
+}
+
+func testPruneDailyGiven(t *testing.T, store *Store) {
 	ctx := context.Background()
-	store := openTestStore(t)
 
 	grants := []struct{ day string }{
 		{"2026-08-20"},
@@ -292,5 +336,22 @@ func TestPruneDailyGiven(t *testing.T) {
 	current, _, err := store.GivenOnDay(ctx, "ch1", "alice", "2026-08-26")
 	if err != nil || current != 1 {
 		t.Fatalf("current day after prune: total=%d err=%v", current, err)
+	}
+}
+
+func TestOpenRejectsUnknownDriver(t *testing.T) {
+	if _, err := Open(Options{Driver: "mysql"}); err == nil {
+		t.Fatal("Open with unknown driver should fail")
+	}
+}
+
+func TestRebindPostgres(t *testing.T) {
+	got := rebindPostgres("INSERT INTO karma VALUES (?, ?, ?) ON CONFLICT DO NOTHING")
+	want := "INSERT INTO karma VALUES ($1, $2, $3) ON CONFLICT DO NOTHING"
+	if got != want {
+		t.Fatalf("rebindPostgres = %q, want %q", got, want)
+	}
+	if got := rebindPostgres("SELECT 1"); got != "SELECT 1" {
+		t.Fatalf("rebindPostgres without placeholders = %q", got)
 	}
 }

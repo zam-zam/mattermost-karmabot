@@ -7,7 +7,7 @@ announces the period's results at each rollover.
 
 - Bot replies are localized: **English by default**, Russian via
   `KARMABOT_LANGUAGE=ru`; commands are English-only.
-- One SQLite file stores everything; karma is isolated per channel.
+- SQLite (default) or PostgreSQL storage; karma is isolated per channel.
 - The bot always replies in the command's thread; a command sent inside
   an existing thread stays in it.
 - Karma periods roll over every **7 days by default** at 00:00 UTC
@@ -81,7 +81,10 @@ Copy `.env.example` to `.env` (or export the variables):
 ```bash
 KARMABOT_MATTERMOST_URL=https://mattermost.example.com
 KARMABOT_MATTERMOST_TOKEN=<bot token>
-KARMABOT_DB_PATH=./data/karmabot.db   # default
+KARMABOT_DB_DRIVER=sqlite              # default; postgres also supported
+KARMABOT_DB_PATH=./data/karmabot.db   # default; sqlite file location
+KARMABOT_DB_DSN=                      # required for postgres, e.g.
+                                      # postgres://user:pass@host:5432/karmabot
 KARMABOT_LOG_LEVEL=info               # default
 KARMABOT_LANGUAGE=en                  # default; ru for Russian replies
 KARMABOT_DAILY_TOTAL_LIMIT=5          # default; 0 = unlimited
@@ -122,7 +125,7 @@ Layout:
 ```
 cmd/karmabot/          wiring, signal handling
 internal/config/       envconfig + .env loading
-internal/storage/      SQLite schema and queries
+internal/storage/      SQLite/PostgreSQL schema and queries
 internal/mmclient/     Mattermost REST + WebSocket client with reconnect
 internal/bot/          event routing, commands, localized messages, periods
 internal/scheduler/    period-rollover summary

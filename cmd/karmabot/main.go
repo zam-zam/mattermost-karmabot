@@ -32,7 +32,11 @@ func run() error {
 	}
 	log := newLogger(cfg.LogLevel)
 
-	store, err := storage.Open(cfg.DBPath)
+	store, err := storage.Open(storage.Options{
+		Driver: cfg.DBDriver,
+		Path:   cfg.DBPath,
+		DSN:    cfg.DBDSN,
+	})
 	if err != nil {
 		return err
 	}

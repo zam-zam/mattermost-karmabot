@@ -79,7 +79,7 @@ func (f *fakeClient) lastRoot() string {
 func newTestBot(t *testing.T, lang string) (*Bot, *fakeClient) {
 	t.Helper()
 
-	store, err := storage.Open(filepath.Join(t.TempDir(), "test.db"))
+	store, err := storage.Open(storage.Options{Path: filepath.Join(t.TempDir(), "test.db")})
 	if err != nil {
 		t.Fatalf("storage.Open: %v", err)
 	}
