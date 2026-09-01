@@ -1,0 +1,31 @@
+# Overlay that switches karmabot to PostgreSQL 18:
+#   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
+# Database credentials can be changed via POSTGRES_* variables in .env.
+services:
+  karmabot:
+    environment:
+      KARMABOT_DB_DRIVER: postgres
+      KARMABOT_DB_DSN: postgres://karmabot:${POSTGRES_PASSWORD:-karmabot}@postgres:5432/karmabot?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: karmabot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-karmabot}
+      POSTGRES_DB: karmabot
+    volumes:
+      # PG 18 wants the mount at /var/lib/postgresql (not the data
+      # subdirectory) so pg_upgrade --link stays within one mount point.
+      - karmabot-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U karmabot -d karmabot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  karmabot-postgres:

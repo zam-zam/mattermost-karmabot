@@ -1,6 +1,6 @@
-// Package storage persists karmabot state in a single SQLite database.
+// Package storage persists karmabot state in SQLite or PostgreSQL.
 // Karma and daily budgets are scoped by channel, so every channel's stats
-// are isolated even though they share one file.
+// are isolated even though they share one database.
 package storage
 
 import (
@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "modernc.org/sqlite"
 )
 
@@ -46,10 +48,19 @@ type Grant struct {
 	TargetUsername string
 }
 
-// Store wraps the SQLite database holding channels, weekly karma and
-// daily budget usage.
+// Options selects the database backend and its connection settings.
+// Driver is "sqlite" (uses Path, the default) or "postgres" (uses DSN).
+type Options struct {
+	Driver string
+	Path   string
+	DSN    string
+}
+
+// Store wraps the database holding channels, weekly karma and daily
+// budget usage.
 type Store struct {
-	db *sql.DB
+	db     *sql.DB
+	rebind func(query string) string
 }
 
 const schema = `
@@ -80,8 +91,20 @@ CREATE TABLE IF NOT EXISTS daily_given (
 );
 `
 
-// Open creates or opens the database at path, applying the schema.
-func Open(path string) (*Store, error) {
+// Open connects to the chosen database and applies the schema. An empty
+// driver means sqlite, the default backend.
+func Open(opts Options) (*Store, error) {
+	switch opts.Driver {
+	case "", "sqlite":
+		return openSQLite(opts.Path)
+	case "postgres":
+		return openPostgres(opts.DSN)
+	default:
+		return nil, fmt.Errorf("unknown KARMABOT_DB_DRIVER %q, want sqlite or postgres", opts.Driver)
+	}
+}
+
+func openSQLite(path string) (*Store, error) {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("creating data directory %s: %w", dir, err)
@@ -96,11 +119,66 @@ func Open(path string) (*Store, error) {
 	// SQLITE_BUSY between the event loop and the scheduler goroutine.
 	db.SetMaxOpenConns(1)
 
+	return newStore(db, func(query string) string { return query })
+}
+
+func openPostgres(dsn string) (*Store, error) {
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("opening postgres database: %w", err)
+	}
+	return newStore(db, rebindPostgres)
+}
+
+func newStore(db *sql.DB, rebind func(string) string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("applying schema: %w", err)
 	}
-	return &Store{db: db}, nil
+	return &Store{db: db, rebind: rebind}, nil
+}
+
+// rebindPostgres rewrites ? placeholders to $1, $2, … so the ?-style
+// queries in this package run unchanged on PostgreSQL.
+func rebindPostgres(query string) string {
+	var b strings.Builder
+	b.Grow(len(query))
+	n := 0
+	for i := 0; i < len(query); i++ {
+		if query[i] == '?' {
+			n++
+			fmt.Fprintf(&b, "$%d", n)
+			continue
+		}
+		b.WriteByte(query[i])
+	}
+	return b.String()
+}
+
+// exec, query and queryRow run a ?-style statement through the backend's
+// placeholder dialect.
+func (s *Store) exec(
+	ctx context.Context,
+	query string,
+	args ...any,
+) (sql.Result, error) {
+	return s.db.ExecContext(ctx, s.rebind(query), args...)
+}
+
+func (s *Store) query(
+	ctx context.Context,
+	query string,
+	args ...any,
+) (*sql.Rows, error) {
+	return s.db.QueryContext(ctx, s.rebind(query), args...)
+}
+
+func (s *Store) queryRow(
+	ctx context.Context,
+	query string,
+	args ...any,
+) *sql.Row {
+	return s.db.QueryRowContext(ctx, s.rebind(query), args...)
 }
 
 // Close closes the underlying database connection.
@@ -111,7 +189,7 @@ func (s *Store) Close() error {
 // EnableChannel turns karma tracking on for the channel, storing its
 // current display name; an already-known channel is re-enabled.
 func (s *Store) EnableChannel(ctx context.Context, ch Channel) error {
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.exec(ctx, `
 		INSERT INTO channels (channel_id, team_id, name, enabled, created_at)
 		VALUES (?, ?, ?, 1, ?)
 		ON CONFLICT(channel_id) DO UPDATE SET
@@ -127,7 +205,7 @@ func (s *Store) EnableChannel(ctx context.Context, ch Channel) error {
 
 // DisableChannel pauses karma tracking; collected karma is preserved.
 func (s *Store) DisableChannel(ctx context.Context, channelID string) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.exec(ctx,
 		"UPDATE channels SET enabled = 0 WHERE channel_id = ?",
 		channelID)
 	if err != nil {
@@ -139,7 +217,7 @@ func (s *Store) DisableChannel(ctx context.Context, channelID string) error {
 // IsChannelEnabled reports whether karma tracking is on for the channel.
 func (s *Store) IsChannelEnabled(ctx context.Context, channelID string) (bool, error) {
 	var enabled bool
-	err := s.db.QueryRowContext(ctx,
+	err := s.queryRow(ctx,
 		"SELECT enabled FROM channels WHERE channel_id = ?",
 		channelID).Scan(&enabled)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -153,7 +231,7 @@ func (s *Store) IsChannelEnabled(ctx context.Context, channelID string) (bool, e
 
 // EnabledChannels lists channels with karma tracking currently on.
 func (s *Store) EnabledChannels(ctx context.Context) ([]Channel, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.query(ctx, `
 		SELECT channel_id, team_id, name FROM channels WHERE enabled = 1`)
 	if err != nil {
 		return nil, fmt.Errorf("listing enabled channels: %w", err)
@@ -181,31 +259,33 @@ func (s *Store) GrantKarma(ctx context.Context, g Grant) (int, error) {
 	}
 	defer tx.Rollback()
 
-	_, err = tx.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, s.rebind(`
 		INSERT INTO karma (channel_id, user_id, username, week, karma)
 		VALUES (?, ?, ?, ?, 1)
 		ON CONFLICT(channel_id, user_id, week) DO UPDATE SET
-			karma = karma + 1,
-			username = excluded.username`,
+			-- Table-qualified: the column and the table are both named
+			-- karma, which PostgreSQL treats as ambiguous when bare.
+			karma = karma.karma + 1,
+			username = excluded.username`),
 		g.ChannelID, g.TargetID, g.TargetUsername, g.Week)
 	if err != nil {
 		return 0, fmt.Errorf("adding karma: %w", err)
 	}
 
-	_, err = tx.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, s.rebind(`
 		INSERT INTO daily_given (channel_id, from_user, to_user, day, amount)
 		VALUES (?, ?, ?, ?, 1)
 		ON CONFLICT(channel_id, from_user, to_user, day) DO UPDATE SET
-			amount = amount + 1`,
+			amount = daily_given.amount + 1`),
 		g.ChannelID, g.GiverID, g.TargetID, g.Day)
 	if err != nil {
 		return 0, fmt.Errorf("recording daily usage: %w", err)
 	}
 
 	var total int
-	err = tx.QueryRowContext(ctx, `
+	err = tx.QueryRowContext(ctx, s.rebind(`
 		SELECT karma FROM karma
-		WHERE channel_id = ? AND user_id = ? AND week = ?`,
+		WHERE channel_id = ? AND user_id = ? AND week = ?`),
 		g.ChannelID, g.TargetID, g.Week).Scan(&total)
 	if err != nil {
 		return 0, fmt.Errorf("reading new karma total: %w", err)
@@ -223,7 +303,7 @@ func (s *Store) GivenOnDay(
 	ctx context.Context,
 	channelID, giverID, day string,
 ) (int, map[string]int, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.query(ctx, `
 		SELECT to_user, amount FROM daily_given
 		WHERE channel_id = ? AND from_user = ? AND day = ?`,
 		channelID, giverID, day)
@@ -253,7 +333,7 @@ func (s *Store) TopByKarma(
 	channelID, week string,
 	limit int,
 ) ([]KarmaEntry, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.query(ctx, `
 		SELECT user_id, username, karma FROM karma
 		WHERE channel_id = ? AND week = ? AND karma > 0
 		ORDER BY karma DESC, username ASC
@@ -281,7 +361,7 @@ func (s *Store) UserKarmaByChannel(
 	ctx context.Context,
 	userID, week string,
 ) ([]ChannelKarma, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.query(ctx, `
 		SELECT c.name, k.karma FROM karma k
 		JOIN channels c ON c.channel_id = k.channel_id
 		WHERE k.user_id = ? AND k.week = ? AND k.karma > 0
@@ -307,7 +387,7 @@ func (s *Store) UserKarmaByChannel(
 // key, used at startup to detect rows written under a different period
 // length.
 func (s *Store) KarmaWeekCounts(ctx context.Context) (map[string]int, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.query(ctx, `
 		SELECT week, COUNT(*) FROM karma GROUP BY week`)
 	if err != nil {
 		return nil, fmt.Errorf("counting karma per week: %w", err)
@@ -329,7 +409,7 @@ func (s *Store) KarmaWeekCounts(ctx context.Context) (map[string]int, error) {
 // PruneDailyGiven deletes daily budget rows strictly older than the given
 // day key.
 func (s *Store) PruneDailyGiven(ctx context.Context, day string) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.exec(ctx,
 		"DELETE FROM daily_given WHERE day < ?",
 		day)
 	if err != nil {
