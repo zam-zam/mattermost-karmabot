@@ -34,6 +34,22 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.DBDriver != "sqlite" {
 		t.Errorf("DBDriver = %q, want %q", cfg.DBDriver, "sqlite")
 	}
+	if cfg.AdminUsername != "" {
+		t.Errorf("AdminUsername = %q, want empty default", cfg.AdminUsername)
+	}
+}
+
+func TestLoadAdminUsername(t *testing.T) {
+	setBaseEnv(t)
+	t.Setenv("KARMABOT_ADMIN_USERNAME", "boss")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.AdminUsername != "boss" {
+		t.Errorf("AdminUsername = %q, want boss", cfg.AdminUsername)
+	}
 }
 
 func TestLoadPostgresDriver(t *testing.T) {

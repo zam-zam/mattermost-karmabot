@@ -90,9 +90,41 @@ KARMABOT_LANGUAGE=en                  # default; ru for Russian replies
 KARMABOT_DAILY_TOTAL_LIMIT=5          # default; 0 = unlimited
 KARMABOT_DAILY_PER_TARGET_LIMIT=2     # default; 0 = unlimited
 KARMABOT_PERIOD_DAYS=7               # default; e.g. 30 for monthly
+KARMABOT_ADMIN_USERNAME=             # optional; enables admin commands
 ```
 
+Admin commands (work in a channel or as a direct message to the bot, and
+only for the configured admin):
+
+| Command | Effect |
+| --- | --- |
+| `@karmabot status` | list every channel where karma is enabled |
+
 ### 3. Run
+
+With Docker Compose (SQLite storage, default):
+
+```bash
+cp .env.example .env   # fill in your Mattermost URL and token
+docker compose up -d
+```
+
+This pulls `ghcr.io/zam-zam/mattermost-karmabot:latest`. To run an image
+built from your checkout instead, add `--build`. To follow the logs:
+
+```bash
+docker logs -f mattermost-karmabot-karmabot-1
+```
+
+With Docker Compose and PostgreSQL 18:
+
+```bash
+cp .env.example .env   # optionally set POSTGRES_PASSWORD there
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
+```
+
+The overlay adds a `postgres` service, switches the bot to it via
+`KARMABOT_DB_DRIVER=postgres`, and waits for the database health check.
 
 From source (Go ≥ 1.26):
 
@@ -101,7 +133,7 @@ go build -o karmabot ./cmd/karmabot
 ./karmabot
 ```
 
-With Docker:
+With plain Docker:
 
 ```bash
 docker build -t karmabot .

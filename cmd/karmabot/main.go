@@ -61,7 +61,8 @@ func run() error {
 			DailyTotal:     cfg.DailyTotalLimit,
 			DailyPerTarget: cfg.DailyPerTargetLimit,
 		},
-		Period: period,
+		Period:        period,
+		AdminUsername: cfg.AdminUsername,
 	})
 	if err != nil {
 		return err
