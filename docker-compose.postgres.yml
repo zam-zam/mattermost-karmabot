@@ -1,8 +1,16 @@
-# Overlay that switches karmabot to PostgreSQL 18:
-#   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
-# Database credentials can be changed via POSTGRES_* variables in .env.
+# Standalone Compose file running karmabot on PostgreSQL 18 (SQLite
+# storage is not used; no /data volume). Database credentials can be
+# changed via POSTGRES_* variables in .env.
+name: karmabot-postgres
+
 services:
   karmabot:
+    image: ghcr.io/zam-zam/mattermost-karmabot:latest
+    # Used by `docker compose -f docker-compose.postgres.yml up --build`;
+    # a plain `up` prefers the image.
+    build: .
+    restart: unless-stopped
+    env_file: .env
     environment:
       KARMABOT_DB_DRIVER: postgres
       KARMABOT_DB_DSN: postgres://karmabot:${POSTGRES_PASSWORD:-karmabot}@postgres:5432/karmabot?sslmode=disable

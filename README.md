@@ -109,22 +109,23 @@ cp .env.example .env   # fill in your Mattermost URL and token
 docker compose up -d
 ```
 
-This pulls `ghcr.io/zam-zam/mattermost-karmabot:latest`. To run an image
-built from your checkout instead, add `--build`. To follow the logs:
-
-```bash
-docker logs -f mattermost-karmabot-karmabot-1
-```
-
 With Docker Compose and PostgreSQL 18:
 
 ```bash
 cp .env.example .env   # optionally set POSTGRES_PASSWORD there
-docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
+docker compose -f docker-compose.postgres.yml up -d
 ```
 
-The overlay adds a `postgres` service, switches the bot to it via
-`KARMABOT_DB_DRIVER=postgres`, and waits for the database health check.
+Each file is a complete, standalone stack — pick the one you need, no
+combining required. Both pull `ghcr.io/zam-zam/mattermost-karmabot:latest`;
+add `--build` to run an image built from your checkout instead. The
+PostgreSQL stack adds a `postgres` service with a health check the bot
+waits for. To follow the logs:
+
+```bash
+docker logs -f karmabot-karmabot-1            # SQLite stack
+docker logs -f karmabot-postgres-karmabot-1   # PostgreSQL stack
+```
 
 From source (Go ≥ 1.26):
 

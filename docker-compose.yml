@@ -1,3 +1,5 @@
+name: karmabot
+
 services:
   karmabot:
     image: ghcr.io/zam-zam/mattermost-karmabot:latest
@@ -5,6 +7,8 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
+    environment:
+      KARMABOT_DB_PATH: /data/karmabot.db
     volumes:
       - karmabot-data:/data
 
