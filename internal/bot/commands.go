@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -12,11 +13,12 @@ import (
 
 // Command verbs; commands are English-only by design.
 const (
-	verbStart = "start"
-	verbStop  = "stop"
-	verbTop   = "top"
-	verbHelp  = "help"
-	verbGrant = "++"
+	verbStart  = "start"
+	verbStop   = "stop"
+	verbTop    = "top"
+	verbHelp   = "help"
+	verbGrant  = "++"
+	verbStatus = "status"
 )
 
 var mentionRe = regexp.MustCompile(`@([A-Za-z0-9._-]+)`)
@@ -45,6 +47,8 @@ func (b *Bot) handleChannel(
 		b.cmdTop(ctx, th)
 	case verbGrant:
 		b.cmdGrant(ctx, th, post, args)
+	case verbStatus:
+		b.cmdStatus(ctx, th, post.UserId)
 	case "--":
 		b.reply(ctx, th, b.msg.noNegative())
 	default:
@@ -64,6 +68,8 @@ func (b *Bot) handleDirect(ctx context.Context, post *model.Post) {
 	case "help":
 		b.reply(ctx, th,
 			b.msg.help(b.botUsername, b.limits, b.period))
+	case "status":
+		b.cmdStatus(ctx, th, post.UserId)
 	default:
 		b.reply(ctx, th, b.msg.dmUnknown())
 	}
@@ -239,6 +245,46 @@ func (b *Bot) cmdMyKarma(ctx context.Context, th thread, userID string) {
 		return
 	}
 	b.reply(ctx, th, b.msg.dmReport(entries))
+}
+
+// cmdStatus lists every channel with karma enabled; only the configured
+// admin may run it. With no admin configured the command is not
+// recognized and falls through to help.
+func (b *Bot) cmdStatus(ctx context.Context, th thread, userID string) {
+	if b.adminUsername == "" {
+		b.reply(ctx, th, b.msg.help(b.botUsername, b.limits, b.period))
+		return
+	}
+
+	admin, err := b.isAdmin(ctx, userID)
+	if err != nil {
+		b.internal(ctx, th, err, "checking admin")
+		return
+	}
+	if !admin {
+		b.reply(ctx, th, b.msg.notAdmin())
+		return
+	}
+
+	channels, err := b.store.EnabledChannels(ctx)
+	if err != nil {
+		b.internal(ctx, th, err, "listing enabled channels")
+		return
+	}
+	b.reply(ctx, th, b.msg.status(channels))
+}
+
+// isAdmin reports whether userID belongs to the configured admin. With
+// no admin configured nobody passes.
+func (b *Bot) isAdmin(ctx context.Context, userID string) (bool, error) {
+	if b.adminUsername == "" {
+		return false, nil
+	}
+	admin, err := b.client.GetUserByUsername(ctx, b.adminUsername)
+	if err != nil {
+		return false, fmt.Errorf("resolving admin %q: %w", b.adminUsername, err)
+	}
+	return admin.Id == userID, nil
 }
 
 // stripBotMention splits "‹@bot …rest›" when the message starts with the

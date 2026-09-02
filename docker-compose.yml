@@ -1,0 +1,16 @@
+name: karmabot
+
+services:
+  karmabot:
+    image: ghcr.io/zam-zam/mattermost-karmabot:latest
+    # Used by `docker compose up --build`; a plain `up` prefers the image.
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      KARMABOT_DB_PATH: /data/karmabot.db
+    volumes:
+      - karmabot-data:/data
+
+volumes:
+  karmabot-data:

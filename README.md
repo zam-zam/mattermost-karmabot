@@ -7,7 +7,7 @@ announces the period's results at each rollover.
 
 - Bot replies are localized: **English by default**, Russian via
   `KARMABOT_LANGUAGE=ru`; commands are English-only.
-- One SQLite file stores everything; karma is isolated per channel.
+- SQLite (default) or PostgreSQL storage; karma is isolated per channel.
 - The bot always replies in the command's thread; a command sent inside
   an existing thread stays in it.
 - Karma periods roll over every **7 days by default** at 00:00 UTC
@@ -81,15 +81,51 @@ Copy `.env.example` to `.env` (or export the variables):
 ```bash
 KARMABOT_MATTERMOST_URL=https://mattermost.example.com
 KARMABOT_MATTERMOST_TOKEN=<bot token>
-KARMABOT_DB_PATH=./data/karmabot.db   # default
+KARMABOT_DB_DRIVER=sqlite              # default; postgres also supported
+KARMABOT_DB_PATH=./data/karmabot.db   # default; sqlite file location
+KARMABOT_DB_DSN=                      # required for postgres, e.g.
+                                      # postgres://user:pass@host:5432/karmabot
 KARMABOT_LOG_LEVEL=info               # default
 KARMABOT_LANGUAGE=en                  # default; ru for Russian replies
 KARMABOT_DAILY_TOTAL_LIMIT=5          # default; 0 = unlimited
 KARMABOT_DAILY_PER_TARGET_LIMIT=2     # default; 0 = unlimited
 KARMABOT_PERIOD_DAYS=7               # default; e.g. 30 for monthly
+KARMABOT_ADMIN_USERNAME=             # optional; enables admin commands
 ```
 
+Admin commands (work in a channel or as a direct message to the bot, and
+only for the configured admin):
+
+| Command | Effect |
+| --- | --- |
+| `@karmabot status` | list every channel where karma is enabled |
+
 ### 3. Run
+
+With Docker Compose (SQLite storage, default):
+
+```bash
+cp .env.example .env   # fill in your Mattermost URL and token
+docker compose up -d
+```
+
+With Docker Compose and PostgreSQL 18:
+
+```bash
+cp .env.example .env   # optionally set POSTGRES_PASSWORD there
+docker compose -f docker-compose.postgres.yml up -d
+```
+
+Each file is a complete, standalone stack — pick the one you need, no
+combining required. Both pull `ghcr.io/zam-zam/mattermost-karmabot:latest`;
+add `--build` to run an image built from your checkout instead. The
+PostgreSQL stack adds a `postgres` service with a health check the bot
+waits for. To follow the logs:
+
+```bash
+docker logs -f karmabot-karmabot-1            # SQLite stack
+docker logs -f karmabot-postgres-karmabot-1   # PostgreSQL stack
+```
 
 From source (Go ≥ 1.26):
 
@@ -98,7 +134,7 @@ go build -o karmabot ./cmd/karmabot
 ./karmabot
 ```
 
-With Docker:
+With plain Docker:
 
 ```bash
 docker build -t karmabot .
@@ -122,7 +158,7 @@ Layout:
 ```
 cmd/karmabot/          wiring, signal handling
 internal/config/       envconfig + .env loading
-internal/storage/      SQLite schema and queries
+internal/storage/      SQLite/PostgreSQL schema and queries
 internal/mmclient/     Mattermost REST + WebSocket client with reconnect
 internal/bot/          event routing, commands, localized messages, periods
 internal/scheduler/    period-rollover summary

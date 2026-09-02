@@ -14,12 +14,15 @@ import (
 type Config struct {
 	MattermostURL       string `envconfig:"MATTERMOST_URL" required:"true"`
 	MattermostToken     string `envconfig:"MATTERMOST_TOKEN" required:"true"`
+	DBDriver            string `envconfig:"DB_DRIVER" default:"sqlite"`
 	DBPath              string `envconfig:"DB_PATH" default:"./data/karmabot.db"`
+	DBDSN               string `envconfig:"DB_DSN"`
 	LogLevel            string `envconfig:"LOG_LEVEL" default:"info"`
 	Language            string `envconfig:"LANGUAGE" default:"en"`
 	DailyTotalLimit     int    `envconfig:"DAILY_TOTAL_LIMIT" default:"5"`
 	DailyPerTargetLimit int    `envconfig:"DAILY_PER_TARGET_LIMIT" default:"2"`
 	PeriodDays          int    `envconfig:"PERIOD_DAYS" default:"7"`
+	AdminUsername       string `envconfig:"ADMIN_USERNAME"`
 }
 
 // Load reads the optional .env file and then processes environment variables.
@@ -39,6 +42,16 @@ func Load() (Config, error) {
 // validate checks the settings envconfig can't express: negative limits
 // or a per-target limit that could never bind.
 func (c Config) validate() error {
+	switch c.DBDriver {
+	case "sqlite", "postgres":
+	case "":
+		return fmt.Errorf("KARMABOT_DB_DRIVER must be sqlite or postgres, got empty")
+	default:
+		return fmt.Errorf("KARMABOT_DB_DRIVER must be sqlite or postgres, got %q", c.DBDriver)
+	}
+	if c.DBDriver == "postgres" && c.DBDSN == "" {
+		return fmt.Errorf("KARMABOT_DB_DSN is required when KARMABOT_DB_DRIVER is postgres")
+	}
 	if c.DailyTotalLimit < 0 {
 		return fmt.Errorf(
 			"KARMABOT_DAILY_TOTAL_LIMIT must be 0 (unlimited) or a positive number, got %d",

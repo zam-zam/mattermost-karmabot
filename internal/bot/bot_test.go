@@ -76,10 +76,17 @@ func (f *fakeClient) lastRoot() string {
 	return f.posts[len(f.posts)-1].rootID
 }
 
-func newTestBot(t *testing.T, lang string) (*Bot, *fakeClient) {
+// newTestBot builds a bot with an optional admin username (the first
+// variadic argument, if any).
+func newTestBot(t *testing.T, lang string, admin ...string) (*Bot, *fakeClient) {
 	t.Helper()
 
-	store, err := storage.Open(filepath.Join(t.TempDir(), "test.db"))
+	adminUsername := ""
+	if len(admin) > 0 {
+		adminUsername = admin[0]
+	}
+
+	store, err := storage.Open(storage.Options{Path: filepath.Join(t.TempDir(), "test.db")})
 	if err != nil {
 		t.Fatalf("storage.Open: %v", err)
 	}
@@ -107,9 +114,10 @@ func newTestBot(t *testing.T, lang string) (*Bot, *fakeClient) {
 		t.Fatalf("NewMessages(%q): %v", lang, err)
 	}
 	b, err := New(client, store, log, Options{
-		Messages: msgs,
-		Limits:   Limits{DailyTotal: 5, DailyPerTarget: 2},
-		Period:   Period{Days: 7},
+		Messages:      msgs,
+		Limits:        Limits{DailyTotal: 5, DailyPerTarget: 2},
+		Period:        Period{Days: 7},
+		AdminUsername: adminUsername,
 	})
 	if err != nil {
 		t.Fatalf("bot.New: %v", err)
@@ -581,4 +589,36 @@ func TestThreadRoot(t *testing.T) {
 	if got := threadRoot(&model.Post{Id: "p2", RootId: "p1"}); got != "p1" {
 		t.Errorf("in-thread post root = %q, want p1", got)
 	}
+}
+
+func TestStatusListsEnabledChannelsForAdmin(t *testing.T) {
+	b, client := newTestBot(t, "en", "alice")
+
+	startKarma(t, b, "ch1")
+	say(t, b, "ch2", "u-alice", "@karmabot start")
+
+	say(t, b, "ch1", "u-alice", "@karmabot status")
+	reply := client.lastReply()
+	wantContains(t, reply, "Channels with karma enabled", "status header")
+	wantContains(t, reply, "dev", "status lists ch1")
+	wantContains(t, reply, "ops", "status lists ch2")
+
+	// The same command works as a direct message to the bot.
+	say(t, b, "dm", "u-alice", "status")
+	wantContains(t, client.lastReply(), "dev", "dm status")
+}
+
+func TestStatusRejectedForNonAdmin(t *testing.T) {
+	b, client := newTestBot(t, "en", "alice")
+
+	startKarma(t, b, "ch1")
+	say(t, b, "ch1", "u-bob", "@karmabot status")
+	wantContains(t, client.lastReply(), "admin only", "non-admin status")
+}
+
+func TestStatusWithoutAdminShowsHelp(t *testing.T) {
+	b, client := newTestBot(t, "en")
+
+	say(t, b, "ch1", "u-alice", "@karmabot status")
+	wantContains(t, client.lastReply(), "Karma bot", "status without admin falls back to help")
 }

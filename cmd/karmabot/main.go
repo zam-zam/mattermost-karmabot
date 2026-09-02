@@ -32,7 +32,11 @@ func run() error {
 	}
 	log := newLogger(cfg.LogLevel)
 
-	store, err := storage.Open(cfg.DBPath)
+	store, err := storage.Open(storage.Options{
+		Driver: cfg.DBDriver,
+		Path:   cfg.DBPath,
+		DSN:    cfg.DBDSN,
+	})
 	if err != nil {
 		return err
 	}
@@ -57,7 +61,8 @@ func run() error {
 			DailyTotal:     cfg.DailyTotalLimit,
 			DailyPerTarget: cfg.DailyPerTargetLimit,
 		},
-		Period: period,
+		Period:        period,
+		AdminUsername: cfg.AdminUsername,
 	})
 	if err != nil {
 		return err

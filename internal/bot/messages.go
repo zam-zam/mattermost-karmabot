@@ -174,6 +174,25 @@ func (m *Messages) dmUnknown() string {
 	return m.t("dmUnknown", nil)
 }
 
+func (m *Messages) notAdmin() string {
+	return m.t("notAdmin", nil)
+}
+
+func (m *Messages) statusHeader() string {
+	return m.t("statusHeader", nil)
+}
+
+func (m *Messages) statusEmpty() string {
+	return m.t("statusEmpty", nil)
+}
+
+func (m *Messages) statusEntry(channelName, channelID string) string {
+	return m.t("statusEntry", map[string]any{
+		"ChannelName": channelName,
+		"ChannelID":   channelID,
+	})
+}
+
 func (m *Messages) rankedEntry(position int, username, stars string) string {
 	return m.t("rankedEntry", map[string]any{
 		"Position": position,
@@ -241,6 +260,19 @@ func (m *Messages) dmReport(entries []storage.ChannelKarma) string {
 		return m.dmEmpty()
 	}
 	return strings.Join(m.dmLines(entries), "\n")
+}
+
+// status renders the admin's list of channels with karma enabled.
+func (m *Messages) status(channels []storage.Channel) string {
+	if len(channels) == 0 {
+		return m.statusEmpty()
+	}
+	lines := make([]string, 0, len(channels)+1)
+	lines = append(lines, m.statusHeader())
+	for _, ch := range channels {
+		lines = append(lines, m.statusEntry(ch.Name, ch.ID))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m *Messages) dmLines(entries []storage.ChannelKarma) []string {

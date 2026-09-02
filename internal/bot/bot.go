@@ -88,22 +88,26 @@ func threadRoot(post *model.Post) string {
 
 // Bot turns "posted" events into karma commands.
 type Bot struct {
-	client      Client
-	store       *storage.Store
-	log         *slog.Logger
-	msg         *Messages
-	limits      Limits
-	period      Period
-	botUsername string
-	botID       string
-	now         func() time.Time
+	client        Client
+	store         *storage.Store
+	log           *slog.Logger
+	msg           *Messages
+	limits        Limits
+	period        Period
+	adminUsername string
+	botUsername   string
+	botID         string
+	now           func() time.Time
 }
 
 // Options carries the bot's configurable behavior set at startup.
+// AdminUsername names the Mattermost user allowed to run admin
+// commands; empty disables them.
 type Options struct {
-	Messages *Messages
-	Limits   Limits
-	Period   Period
+	Messages      *Messages
+	Limits        Limits
+	Period        Period
+	AdminUsername string
 }
 
 // New creates the bot, taking its identity from the client so it can
@@ -131,15 +135,16 @@ func New(
 		return nil, fmt.Errorf("client returned no bot identity")
 	}
 	return &Bot{
-		client:      client,
-		store:       store,
-		log:         log,
-		msg:         opts.Messages,
-		limits:      opts.Limits,
-		period:      opts.Period,
-		botUsername: me.Username,
-		botID:       me.Id,
-		now:         time.Now,
+		client:        client,
+		store:         store,
+		log:           log,
+		msg:           opts.Messages,
+		limits:        opts.Limits,
+		period:        opts.Period,
+		adminUsername: opts.AdminUsername,
+		botUsername:   me.Username,
+		botID:         me.Id,
+		now:           time.Now,
 	}, nil
 }
 
