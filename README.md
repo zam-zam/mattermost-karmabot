@@ -2,6 +2,8 @@
 
 **English** | [Русский](README-RU.md)
 
+[![Website](https://img.shields.io/badge/website-zam--zam.github.io-4da3ff?style=flat-square)](https://zam-zam.github.io/mattermost-karmabot/)
+
 A karma bot for [Mattermost](https://mattermost.com) (tested against 10.10.x).
 Teammates thank each other by mentioning the bot; the bot tracks per-channel
 karma scores over rolling periods (weekly by default) with daily limits, and

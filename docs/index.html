@@ -1,0 +1,1400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>karmabot — karma bot for Mattermost</title>
+<meta name="description" content="Free and open-source karma bot for Mattermost: thank teammates with a single message, track per-channel weekly tops, keep channels clean with thread replies.">
+<meta name="theme-color" content="#0a0e16">
+<meta property="og:type" content="website">
+<meta property="og:title" content="karmabot — karma bot for Mattermost">
+<meta property="og:description" content="Thank teammates with a single message, track per-channel weekly tops, keep channels clean with thread replies.">
+<meta property="og:url" content="https://zam-zam.github.io/mattermost-karmabot/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0e16'/%3E%3Cpath d='M32 12l6.2 13.6 14.8 1.8-10.9 10.1 3 14.6L32 45l-13.1 7.1 3-14.6L11 27.4l14.8-1.8z' fill='%23ffc94d'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0a0e16;
+    --bg-soft: #0d1424;
+    --surface: rgba(255, 255, 255, 0.035);
+    --surface-2: rgba(255, 255, 255, 0.06);
+    --border: rgba(255, 255, 255, 0.09);
+    --border-soft: rgba(255, 255, 255, 0.06);
+    --text: #e9eef7;
+    --muted: #94a1b8;
+    --faint: #6b7690;
+    --blue: #4da3ff;
+    --blue-soft: rgba(77, 163, 255, 0.14);
+    --violet: #8b7cff;
+    --gold: #ffc94d;
+    --gold-soft: rgba(255, 201, 77, 0.12);
+    --gradient: linear-gradient(120deg, #4da3ff 0%, #8b7cff 100%);
+    --radius: 16px;
+    --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  ::selection { background: rgba(77, 163, 255, 0.35); }
+
+  /* ---------- background aurora ---------- */
+  .aurora {
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    background:
+      radial-gradient(900px 600px at 85% -10%, rgba(139, 124, 255, 0.16), transparent 60%),
+      radial-gradient(1000px 700px at -10% 10%, rgba(77, 163, 255, 0.14), transparent 60%),
+      radial-gradient(800px 800px at 50% 115%, rgba(255, 201, 77, 0.07), transparent 60%);
+  }
+  .grid-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, black 30%, transparent 75%);
+    -webkit-mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, black 30%, transparent 75%);
+  }
+
+  .container { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- nav ---------- */
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    background: rgba(10, 14, 22, 0.72);
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .nav-inner {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    height: 64px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: var(--text);
+    font-weight: 700;
+    font-size: 17px;
+    letter-spacing: -0.02em;
+  }
+  .brand-mark {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    background: var(--gradient);
+    display: grid;
+    place-items: center;
+    box-shadow: 0 4px 16px rgba(99, 128, 255, 0.4);
+  }
+  .brand-mark svg { width: 16px; height: 16px; }
+  .nav-links { display: flex; gap: 22px; margin-left: 8px; }
+  .nav-links a {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 14.5px;
+    font-weight: 500;
+    transition: color 0.2s;
+  }
+  .nav-links a:hover { color: var(--text); }
+  .nav-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+
+  .lang-switch {
+    display: flex;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px;
+    gap: 2px;
+  }
+  .lang-switch button {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--font);
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 4px 11px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .lang-switch button.active {
+    background: var(--surface-2);
+    color: var(--text);
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font);
+    font-size: 14.5px;
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: 12px;
+    padding: 10px 18px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+  .btn-primary {
+    background: var(--gradient);
+    color: #fff;
+    box-shadow: 0 6px 24px rgba(99, 128, 255, 0.35);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 32px rgba(99, 128, 255, 0.5); }
+  .btn-ghost {
+    background: var(--surface);
+    border-color: var(--border);
+    color: var(--text);
+  }
+  .btn-ghost:hover { background: var(--surface-2); border-color: rgba(255, 255, 255, 0.18); transform: translateY(-2px); }
+  .nav-github { padding: 8px 14px; font-size: 13.5px; }
+
+  /* ---------- hero ---------- */
+  .hero { position: relative; padding: 84px 0 96px; }
+  .hero-inner {
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 64px;
+    align-items: center;
+  }
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--blue);
+    background: var(--blue-soft);
+    border: 1px solid rgba(77, 163, 255, 0.25);
+    border-radius: 999px;
+    padding: 5px 14px;
+    margin-bottom: 24px;
+  }
+  .hero-badge .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--gold);
+    box-shadow: 0 0 8px var(--gold);
+  }
+  .hero h1 {
+    font-size: clamp(40px, 5.5vw, 62px);
+    line-height: 1.06;
+    letter-spacing: -0.035em;
+    font-weight: 800;
+    margin-bottom: 22px;
+  }
+  .hero h1 .grad {
+    background: linear-gradient(120deg, #ffc94d 10%, #ff9d5c 55%, #8b7cff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .hero .lead {
+    font-size: clamp(16px, 1.6vw, 18.5px);
+    color: var(--muted);
+    max-width: 520px;
+    margin-bottom: 34px;
+  }
+  .hero .lead code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    color: var(--gold);
+    background: var(--gold-soft);
+    padding: 2px 7px;
+    border-radius: 6px;
+  }
+  .hero-ctas { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 30px; }
+  .hero-docker {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--faint);
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px dashed var(--border);
+    border-radius: 12px;
+    padding: 11px 14px;
+    max-width: fit-content;
+  }
+  .hero-docker .cmd { color: var(--muted); white-space: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .hero-docker .cmd::-webkit-scrollbar { display: none; }
+  .hero-docker .cmd b { color: var(--text); font-weight: 500; }
+
+  .copy-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--font);
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 8px;
+    padding: 5px 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  .copy-btn:hover { color: var(--text); border-color: rgba(255, 255, 255, 0.2); }
+  .copy-btn svg { width: 13px; height: 13px; }
+  .copy-btn.done { color: #4ade80; border-color: rgba(74, 222, 128, 0.35); }
+
+  /* hero stars */
+  .star-field { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .particle {
+    position: absolute;
+    color: var(--gold);
+    animation: twinkle var(--dur, 4s) ease-in-out var(--delay, 0s) infinite;
+    user-select: none;
+  }
+  @keyframes twinkle {
+    0%, 100% { opacity: 0.05; transform: scale(0.85); }
+    50% { opacity: 0.55; transform: scale(1.05); }
+  }
+
+  /* ---------- chat mockup ---------- */
+  .chat-wrap { position: relative; }
+  .chat-float {
+    position: absolute;
+    top: -16px;
+    right: -10px;
+    z-index: 5;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text);
+    background: rgba(18, 24, 38, 0.9);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 7px 15px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    animation: float 6s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+  .chat {
+    background: linear-gradient(180deg, #101726 0%, #0c1120 100%);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow:
+      0 30px 80px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(255, 255, 255, 0.02) inset,
+      0 20px 60px rgba(77, 163, 255, 0.08);
+    transform: rotate(0.6deg);
+    transition: transform 0.4s ease;
+  }
+  .chat:hover { transform: rotate(0deg) translateY(-4px); }
+  .chat-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 18px;
+    border-bottom: 1px solid var(--border-soft);
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .chat-dots { display: flex; gap: 6px; }
+  .chat-dots span { width: 10px; height: 10px; border-radius: 50%; }
+  .chat-dots span:nth-child(1) { background: #ff5f57; }
+  .chat-dots span:nth-child(2) { background: #febc2e; }
+  .chat-dots span:nth-child(3) { background: #28c840; }
+  .chat-channel {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-weight: 700;
+    font-size: 14px;
+    margin: 0 auto;
+  }
+  .chat-channel svg { width: 15px; height: 15px; color: var(--faint); }
+  .chat-channel .live {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #4ade80;
+    background: rgba(74, 222, 128, 0.12);
+    border: 1px solid rgba(74, 222, 128, 0.25);
+    border-radius: 999px;
+    padding: 1px 8px;
+  }
+  .chat-head .spacer { width: 40px; }
+
+  .chat-body { padding: 18px 18px 10px; display: flex; flex-direction: column; gap: 14px; }
+
+  .msg { display: flex; gap: 11px; }
+  .avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    margin-top: 2px;
+  }
+  .avatar.bot { border-radius: 10px; background: var(--gradient); box-shadow: 0 3px 12px rgba(99, 128, 255, 0.45); }
+  .avatar.bot svg { width: 17px; height: 17px; }
+  .msg-body { min-width: 0; }
+  .msg-meta { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 2px; }
+  .msg-meta b { font-weight: 700; }
+  .msg-meta time { color: var(--faint); font-size: 11.5px; }
+  .bot-tag {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: var(--violet);
+    background: rgba(139, 124, 255, 0.15);
+    border: 1px solid rgba(139, 124, 255, 0.3);
+    border-radius: 4px;
+    padding: 0 5px;
+    line-height: 14px;
+  }
+  .msg-text { font-size: 14px; color: #d5dcea; overflow-wrap: break-word; }
+  .msg-sub { font-size: 12px; color: var(--faint); margin-top: 3px; }
+  .mention {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    color: var(--blue);
+    background: var(--blue-soft);
+    border-radius: 5px;
+    padding: 1px 5px;
+    white-space: nowrap;
+  }
+  .stars { color: var(--gold); letter-spacing: 1px; white-space: nowrap; }
+  .top-list { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
+  .top-list .row { display: flex; justify-content: space-between; gap: 16px; font-size: 13.5px; }
+  .top-list .row .score { color: var(--muted); white-space: nowrap; }
+  .top-list .row:first-child .score b { color: var(--gold); }
+
+  .thread {
+    display: flex;
+    gap: 11px;
+    margin-left: 13px;
+    padding-left: 14px;
+    border-left: 2px solid rgba(77, 163, 255, 0.3);
+  }
+  .thread .avatar { width: 26px; height: 26px; font-size: 11px; margin-top: 3px; }
+  .thread .avatar.bot { width: 26px; height: 26px; border-radius: 8px; }
+  .thread .avatar.bot svg { width: 13px; height: 13px; }
+  .thread .msg-meta { font-size: 12.5px; }
+  .thread .msg-text { font-size: 13.5px; }
+  .thread-hint {
+    margin-left: 27px;
+    font-size: 12px;
+    color: var(--blue);
+    opacity: 0.75;
+    margin-top: -6px;
+  }
+
+  .chat-input {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 8px 14px 14px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--faint);
+  }
+  .chat-input .send {
+    margin-left: auto;
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    background: var(--gradient);
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+  }
+  .chat-input .send svg { width: 13px; height: 13px; color: #fff; }
+
+  /* ---------- sections ---------- */
+  section { padding: 88px 0; scroll-margin-top: 70px; }
+  .section-head { text-align: center; max-width: 640px; margin: 0 auto 56px; }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 16px;
+  }
+  .eyebrow svg { width: 13px; height: 13px; }
+  .section-head h2 {
+    font-size: clamp(28px, 3.6vw, 40px);
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    font-weight: 800;
+    margin-bottom: 14px;
+  }
+  .section-head p { color: var(--muted); font-size: 16.5px; }
+
+  /* features */
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+  .feature {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 26px 24px;
+    transition: all 0.25s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .feature::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(400px 200px at var(--mx, 50%) -20%, rgba(77, 163, 255, 0.09), transparent 70%);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .feature:hover { transform: translateY(-4px); border-color: rgba(77, 163, 255, 0.3); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35); }
+  .feature:hover::before { opacity: 1; }
+  .feature-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    font-size: 20px;
+    margin-bottom: 16px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+  }
+  .feature h3 { font-size: 16.5px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 8px; }
+  .feature p { font-size: 14px; color: var(--muted); }
+  .feature p code {
+    font-family: var(--mono);
+    font-size: 0.85em;
+    color: var(--gold);
+    background: var(--gold-soft);
+    padding: 1px 6px;
+    border-radius: 5px;
+  }
+  .features-strip {
+    margin-top: 22px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+  }
+  .chip {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 15px;
+  }
+  .chip b { color: var(--gold); font-weight: 600; }
+
+  /* commands */
+  .commands-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 14px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .cmd-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: rgba(0, 0, 0, 0.18);
+    border: 1px solid var(--border-soft);
+    border-radius: 13px;
+    padding: 14px 18px;
+    transition: all 0.2s;
+  }
+  .cmd-row:hover { border-color: rgba(77, 163, 255, 0.3); background: rgba(77, 163, 255, 0.05); }
+  .cmd-key {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text);
+    background: rgba(77, 163, 255, 0.1);
+    border: 1px solid rgba(77, 163, 255, 0.22);
+    border-radius: 8px;
+    padding: 5px 11px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .cmd-key .at { color: var(--blue); }
+  .cmd-desc { font-size: 13.5px; color: var(--muted); }
+  .cmd-desc .tag {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--violet);
+    background: rgba(139, 124, 255, 0.13);
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-right: 6px;
+    vertical-align: 1px;
+  }
+
+  /* quick start */
+  .qs-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    overflow: hidden;
+    max-width: 780px;
+    margin: 0 auto;
+  }
+  .qs-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 10px 12px 0;
+    border-bottom: 1px solid var(--border-soft);
+    background: rgba(0, 0, 0, 0.15);
+  }
+  .qs-tab {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--font);
+    font-size: 13.5px;
+    font-weight: 600;
+    padding: 9px 16px;
+    border-radius: 10px 10px 0 0;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+  }
+  .qs-tab:hover { color: var(--text); }
+  .qs-tab.active { color: var(--blue); border-bottom-color: var(--blue); background: rgba(77, 163, 255, 0.06); }
+  .qs-pane { display: none; padding: 20px; }
+  .qs-pane.active { display: block; }
+
+  .code-block {
+    background: #080c14;
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .code-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 8px 8px 16px;
+    border-bottom: 1px solid var(--border-soft);
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .code-head .file { font-family: var(--mono); font-size: 12px; color: var(--faint); }
+  .code-block pre {
+    font-family: var(--mono);
+    font-size: 13.5px;
+    line-height: 1.75;
+    color: #c9d6ea;
+    padding: 16px 18px;
+    overflow-x: auto;
+  }
+  .code-block .c { color: #5a6a85; }
+  .code-block .p { color: var(--gold); }
+
+  .qs-then {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin-top: 18px;
+    background: rgba(74, 222, 128, 0.06);
+    border: 1px solid rgba(74, 222, 128, 0.18);
+    border-radius: 13px;
+    padding: 16px 18px;
+    font-size: 14.5px;
+    color: var(--muted);
+  }
+  .qs-then .ico { font-size: 18px; line-height: 1.4; }
+  .qs-then code {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    color: #4ade80;
+    background: rgba(74, 222, 128, 0.1);
+    padding: 1px 6px;
+    border-radius: 5px;
+  }
+  .qs-then a { color: var(--blue); font-weight: 600; text-decoration: none; }
+  .qs-then a:hover { text-decoration: underline; }
+
+  /* CTA band */
+  .cta-band {
+    text-align: center;
+    padding: 30px 0 100px;
+  }
+  .cta-band .box {
+    background:
+      radial-gradient(600px 200px at 50% -30%, rgba(139, 124, 255, 0.18), transparent 70%),
+      var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    padding: 56px 32px;
+  }
+  .cta-band h2 { font-size: clamp(26px, 3.4vw, 36px); letter-spacing: -0.03em; font-weight: 800; margin-bottom: 12px; }
+  .cta-band p { color: var(--muted); margin-bottom: 28px; font-size: 16px; }
+  .cta-band .btns { display: flex; justify-content: center; flex-wrap: wrap; gap: 14px; }
+
+  /* footer */
+  footer { border-top: 1px solid var(--border-soft); padding: 44px 0 40px; }
+  .footer-inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 20px;
+    justify-content: space-between;
+  }
+  .footer-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+  .footer-brand .brand-mark { width: 26px; height: 26px; border-radius: 8px; }
+  .footer-brand .brand-mark svg { width: 14px; height: 14px; }
+  .footer-note { font-size: 13.5px; color: var(--faint); }
+  .footer-links { display: flex; gap: 22px; }
+  .footer-links a {
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--muted);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: color 0.2s;
+  }
+  .footer-links a:hover { color: var(--text); }
+  .footer-links svg { width: 13px; height: 13px; }
+  .footer-bottom {
+    margin-top: 26px;
+    padding-top: 22px;
+    border-top: 1px solid var(--border-soft);
+    font-size: 12.5px;
+    color: var(--faint);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: space-between;
+  }
+
+  /* reveal on scroll */
+  .reveal { opacity: 0; transform: translateY(22px); transition: opacity 0.6s ease, transform 0.6s ease; }
+  .reveal.visible { opacity: 1; transform: none; }
+
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 1000px) {
+    .hero-inner { grid-template-columns: 1fr; gap: 52px; }
+    .chat { transform: none; max-width: 560px; margin: 0 auto; }
+    .features-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 720px) {
+    .nav-links { display: none; }
+    .nav-github .label { display: none; }
+    .nav-github { padding: 8px 10px; }
+    .hero { padding: 56px 0 72px; }
+    .features-grid { grid-template-columns: 1fr; }
+    .commands-card { grid-template-columns: 1fr; }
+    .cmd-row { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .chat-float { right: 4px; top: -12px; }
+    .hero-ctas .btn { flex: 1; justify-content: center; }
+    section { padding: 64px 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.001s !important; transition-duration: 0.001s !important; }
+    html { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+
+<div class="aurora"></div>
+<div class="grid-overlay"></div>
+
+<nav>
+  <div class="container nav-inner">
+    <a class="brand" href="#">
+      <span class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="#fff"><path d="M12 2.5l2.6 5.7 6.2.8-4.6 4.3 1.2 6.2L12 16.6l-5.4 2.9 1.2-6.2L3.2 9l6.2-.8z"/></svg>
+      </span>
+      karmabot
+    </a>
+    <div class="nav-links">
+      <a href="#features" data-i18n="nav.features">Features</a>
+      <a href="#commands" data-i18n="nav.commands">Commands</a>
+      <a href="#start" data-i18n="nav.start">Quick start</a>
+    </div>
+    <div class="nav-right">
+      <div class="lang-switch" role="group" aria-label="Language">
+        <button id="lang-en" type="button">EN</button>
+        <button id="lang-ru" type="button">RU</button>
+      </div>
+      <a class="btn btn-ghost nav-github" href="https://github.com/zam-zam/mattermost-karmabot" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span class="label" data-i18n="nav.github">GitHub</span>
+      </a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="star-field" id="starField" aria-hidden="true"></div>
+  <div class="container hero-inner">
+    <div>
+      <div class="hero-badge"><span class="dot"></span><span data-i18n="hero.badge">Free &amp; open source · Bot for Mattermost</span></div>
+      <h1><span data-i18n="hero.title1">Say thanks</span> <span class="grad" data-i18n="hero.title2">with stars</span></h1>
+      <p class="lead" data-i18n-html="hero.lead"></p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary" href="#start" data-i18n="hero.cta.start">Get started</a>
+        <a class="btn btn-ghost" href="https://github.com/zam-zam/mattermost-karmabot" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span data-i18n="hero.cta.github">View on GitHub</span>
+        </a>
+      </div>
+      <div class="hero-docker">
+        <span class="cmd"><b>$</b> docker pull ghcr.io/zam-zam/mattermost-karmabot:latest</span>
+        <button class="copy-btn" type="button" data-copy="docker pull ghcr.io/zam-zam/mattermost-karmabot:latest" aria-label="Copy docker pull command">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span data-i18n="ui.copy">Copy</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="chat-wrap reveal">
+      <div class="chat-float" data-i18n="chat.float">🧵 replies in threads</div>
+      <div class="chat" aria-label="Mattermost chat demo">
+        <div class="chat-head">
+          <div class="chat-dots"><span></span><span></span><span></span></div>
+          <div class="chat-channel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M4 9h16M8 4L7 20M17 4l-1 16M4 15h16"/></svg>
+            team
+            <span class="live">LIVE</span>
+          </div>
+          <div class="spacer"></div>
+        </div>
+        <div class="chat-body" id="chatBody"><!-- rendered by i18n --></div>
+        <div class="chat-input">
+          <span id="chatPlaceholder" data-i18n="chat.placeholder">Message #team — try @karmabot ++ @bob</span>
+          <span class="send"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="eyebrow">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l2.6 5.7 6.2.8-4.6 4.3 1.2 6.2L12 16.6l-5.4 2.9 1.2-6.2L3.2 9l6.2-.8z"/></svg>
+        <span data-i18n="features.eyebrow">Features</span>
+      </div>
+      <h2 data-i18n="features.title">Everything a karma ritual needs</h2>
+      <p data-i18n="features.sub">A tiny bot with sharp edges — no bloat, no cloud, just your Mattermost and your database.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature reveal">
+        <div class="feature-icon">⭐</div>
+        <h3 data-i18n="features.f1.t">Karma in one message</h3>
+        <p data-i18n-html="features.f1.d"></p>
+      </div>
+      <div class="feature reveal">
+        <div class="feature-icon">🧵</div>
+        <h3 data-i18n="features.f2.t">Threads-first</h3>
+        <p data-i18n="features.f2.d">Replies always land in the command's thread, so your channel stays clean.</p>
+      </div>
+      <div class="feature reveal">
+        <div class="feature-icon">📊</div>
+        <h3 data-i18n="features.f3.t">Per-channel scoreboards</h3>
+        <p data-i18n-html="features.f3.d"></p>
+      </div>
+      <div class="feature reveal">
+        <div class="feature-icon">🔄</div>
+        <h3 data-i18n="features.f4.t">Weekly roll-overs</h3>
+        <p data-i18n-html="features.f4.d"></p>
+      </div>
+      <div class="feature reveal">
+        <div class="feature-icon">🛡️</div>
+        <h3 data-i18n="features.f5.t">Anti-farming limits</h3>
+        <p data-i18n-html="features.f5.d"></p>
+      </div>
+      <div class="feature reveal">
+        <div class="feature-icon">🗄️</div>
+        <h3 data-i18n="features.f6.t">SQLite or PostgreSQL</h3>
+        <p data-i18n="features.f6.d">Zero-config SQLite by default, PostgreSQL for scale. One static Go binary; Docker images for amd64 and arm64.</p>
+      </div>
+    </div>
+    <div class="features-strip reveal" id="featuresStrip"></div>
+  </div>
+</section>
+
+<section id="commands">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="eyebrow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 17l6-6-6-6M12 19h8"/></svg>
+        <span data-i18n="commands.eyebrow">Commands</span>
+      </div>
+      <h2 data-i18n="commands.title">Talk to it like a teammate</h2>
+      <p data-i18n="commands.sub">No slash commands to remember — just mention the bot. Commands are English-only; replies follow your language setting.</p>
+    </div>
+    <div class="commands-card reveal">
+      <div class="cmd-row">
+        <span class="cmd-key"><span class="at">@karmabot</span> start</span>
+        <span class="cmd-desc" data-i18n="commands.c1">Enable karma in the channel</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd-key"><span class="at">@karmabot</span> ++ @user [@user2 …]</span>
+        <span class="cmd-desc" data-i18n="commands.c2">Give +1 karma to each mentioned teammate</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd-key"><span class="at">@karmabot</span> top</span>
+        <span class="cmd-desc" data-i18n="commands.c3">Top-10 for the current period</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd-key"><span class="at">@karmabot</span> stop</span>
+        <span class="cmd-desc" data-i18n="commands.c4">Pause karma — scores are kept</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd-key"><span class="at">@karmabot</span> help</span>
+        <span class="cmd-desc" data-i18n="commands.c5">Cheat sheet</span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd-key">karma</span>
+        <span class="cmd-desc"><span class="tag" data-i18n="commands.dm">DM</span><span data-i18n="commands.c6">Your karma across channels, in a direct message</span></span>
+      </div>
+      <div class="cmd-row">
+        <span class="cmd-key"><span class="at">@karmabot</span> status</span>
+        <span class="cmd-desc"><span class="tag" data-i18n="commands.admin">Admin</span><span data-i18n="commands.c7">List every channel where karma is enabled</span></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="start">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="eyebrow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        <span data-i18n="start.eyebrow">Quick start</span>
+      </div>
+      <h2 data-i18n="start.title">Running in two minutes</h2>
+      <p data-i18n-html="start.sub"></p>
+    </div>
+    <div class="qs-card reveal">
+      <div class="qs-tabs" role="tablist">
+        <button class="qs-tab active" role="tab" aria-selected="true" data-tab="compose" data-i18n="start.tab.compose">Docker Compose</button>
+        <button class="qs-tab" role="tab" aria-selected="false" data-tab="docker" data-i18n="start.tab.docker">Plain Docker</button>
+        <button class="qs-tab" role="tab" aria-selected="false" data-tab="source" data-i18n="start.tab.source">From source</button>
+      </div>
+      <div class="qs-pane active" data-pane="compose">
+        <div class="code-block">
+          <div class="code-head">
+            <span class="file">terminal</span>
+            <button class="copy-btn" type="button" data-copy="cp .env.example .env   # set KARMABOT_MATTERMOST_URL and KARMABOT_MATTERMOST_TOKEN&#10;docker compose up -d">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              <span data-i18n="ui.copy">Copy</span>
+            </button>
+          </div>
+          <pre><span class="c"># 1 — configure (set your Mattermost URL and bot token)</span>
+<span class="p">$</span> cp .env.example .env
+
+<span class="c"># 2 — run</span>
+<span class="p">$</span> docker compose up -d</pre>
+        </div>
+      </div>
+      <div class="qs-pane" data-pane="docker">
+        <div class="code-block">
+          <div class="code-head">
+            <span class="file">terminal</span>
+            <button class="copy-btn" type="button" data-copy="docker pull ghcr.io/zam-zam/mattermost-karmabot:latest&#10;docker run -d --name karmabot --env-file .env -v karmabot-data:/data ghcr.io/zam-zam/mattermost-karmabot:latest">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              <span data-i18n="ui.copy">Copy</span>
+            </button>
+          </div>
+          <pre><span class="c"># prebuilt multi-arch image from ghcr.io</span>
+<span class="p">$</span> docker pull ghcr.io/zam-zam/mattermost-karmabot:latest
+<span class="p">$</span> docker run -d --name karmabot \
+    --env-file .env \
+    -v karmabot-data:/data \
+    ghcr.io/zam-zam/mattermost-karmabot:latest</pre>
+        </div>
+      </div>
+      <div class="qs-pane" data-pane="source">
+        <div class="code-block">
+          <div class="code-head">
+            <span class="file">terminal</span>
+            <button class="copy-btn" type="button" data-copy="go build -o karmabot ./cmd/karmabot&#10;./karmabot">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              <span data-i18n="ui.copy">Copy</span>
+            </button>
+          </div>
+          <pre><span class="c"># Go ≥ 1.26</span>
+<span class="p">$</span> go build -o karmabot ./cmd/karmabot
+<span class="p">$</span> ./karmabot</pre>
+        </div>
+      </div>
+      <div class="qs-then">
+        <span class="ico">🎉</span>
+        <span data-i18n-html="start.then"></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="cta-band">
+  <div class="container reveal">
+    <div class="box">
+      <h2 data-i18n="cta.title">Ready to spread the karma?</h2>
+      <p data-i18n="cta.sub">Self-hosted, single binary, your database. Stars are waiting.</p>
+      <div class="btns">
+        <a class="btn btn-primary" href="https://github.com/zam-zam/mattermost-karmabot" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span data-i18n="cta.github">Star on GitHub</span>
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/zam-zam/mattermost-karmabot#readme" target="_blank" rel="noopener" data-i18n="cta.docs">Read the docs</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <span class="brand-mark"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 2.5l2.6 5.7 6.2.8-4.6 4.3 1.2 6.2L12 16.6l-5.4 2.9 1.2-6.2L3.2 9l6.2-.8z"/></svg></span>
+        karmabot
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/zam-zam/mattermost-karmabot" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M14.5 4.5h5v5M20 4.5L11 13.5"/></svg>
+          <span data-i18n="footer.source">Source</span>
+        </a>
+        <a href="https://github.com/zam-zam/mattermost-karmabot#readme" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          <span data-i18n="footer.docs">Docs</span>
+        </a>
+        <a href="https://github.com/zam-zam/mattermost-karmabot/blob/master/CHANGELOG.md" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.5l2.6 5.7 6.2.8-4.6 4.3 1.2 6.2L12 16.6l-5.4 2.9 1.2-6.2L3.2 9l6.2-.8z"/></svg>
+          Changelog
+        </a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span data-i18n="footer.note">Made with ⭐ for Mattermost teams.</span>
+      <span data-i18n="footer.tm">Mattermost is a trademark of Mattermost, Inc. This project is not affiliated with Mattermost.</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  var BOT_AVATAR = '<span class="avatar bot"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 2.5l2.6 5.7 6.2.8-4.6 4.3 1.2 6.2L12 16.6l-5.4 2.9 1.2-6.2L3.2 9l6.2-.8z"/></svg></span>';
+
+  var I18N = {
+    en: {
+      "html.lang": "en",
+      "nav.features": "Features",
+      "nav.commands": "Commands",
+      "nav.start": "Quick start",
+      "nav.github": "GitHub",
+
+      "hero.badge": "Free & open source · Bot for Mattermost",
+      "hero.title1": "Say thanks",
+      "hero.title2": "with stars",
+      "hero.lead": "karmabot is a karma bot for Mattermost: mention it to give a teammate a point, watch weekly per-channel tops — and keep the channel clean, because every reply lands in a thread.",
+      "hero.cta.start": "Get started",
+      "hero.cta.github": "View on GitHub",
+
+      "chat.float": "🧵 replies in threads",
+      "chat.placeholder": "Message #team — try @karmabot ++ @bob",
+      "chat.html":
+        '<div class="msg">' +
+          '<span class="avatar" style="background:#7c5cff">A</span>' +
+          '<div class="msg-body">' +
+            '<div class="msg-meta"><b>alice</b><time>10:02</time></div>' +
+            '<div class="msg-text"><span class="mention">@karmabot</span> ++ <span class="mention">@bob</span> thanks for saving the release 🚀</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="thread">' +
+          BOT_AVATAR +
+          '<div class="msg-body">' +
+            '<div class="msg-meta"><b>karmabot</b><span class="bot-tag">BOT</span><time>10:02</time></div>' +
+            '<div class="msg-text">✅ <span class="mention">@bob</span>: +1 (channel karma: <span class="stars">⭐⭐⭐</span> 3)</div>' +
+            '<div class="msg-sub">Left today: 4 of 5 · <span class="mention">@bob</span>: 1 of 2</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="thread-hint">↩ 2 replies</div>' +
+        '<div class="msg">' +
+          '<span class="avatar" style="background:#2f9e77">B</span>' +
+          '<div class="msg-body">' +
+            '<div class="msg-meta"><b>bob</b><time>10:03</time></div>' +
+            '<div class="msg-text"><span class="mention">@karmabot</span> top</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="thread">' +
+          BOT_AVATAR +
+          '<div class="msg-body">' +
+            '<div class="msg-meta"><b>karmabot</b><span class="bot-tag">BOT</span><time>10:03</time></div>' +
+            '<div class="msg-text">🏅 Top-10 this period:' +
+              '<div class="top-list">' +
+                '<div class="row"><span>1. <span class="mention">@alice</span></span><span class="score"><span class="stars">⭐⭐⭐⭐</span> <b>4</b></span></div>' +
+                '<div class="row"><span>2. <span class="mention">@bob</span></span><span class="score"><span class="stars">⭐⭐⭐</span> <b>3</b></span></div>' +
+                '<div class="row"><span>3. <span class="mention">@carol</span></span><span class="score"><span class="stars">⭐⭐</span> <b>2</b></span></div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>',
+
+      "features.eyebrow": "Features",
+      "features.title": "Everything a karma ritual needs",
+      "features.sub": "A tiny bot with sharp edges — no bloat, no cloud, just your Mattermost and your database.",
+      "features.f1.t": "Karma in one message",
+      "features.f1.d": 'Mention the bot and a teammate: <code>@karmabot ++ @alice</code>. No slash commands, no forms — karma lands instantly.',
+      "features.f2.t": "Threads-first",
+      "features.f2.d": "Replies always land in the command's thread, so your channel stays clean.",
+      "features.f3.t": "Per-channel scoreboards",
+      "features.f3.d": 'Karma is isolated per channel: heroes of <code>#dev</code> don\'t leak into <code>#random</code>.',
+      "features.f4.t": "Weekly roll-overs",
+      "features.f4.d": 'Every <code>KARMABOT_PERIOD_DAYS</code> days (7 by default) the scoreboard softly resets at 00:00 UTC and the bot posts a top-5 digest.',
+      "features.f5.t": "Anti-farming limits",
+      "features.f5.d": '5 karma a day total, 2 per teammate — both configurable; <code>0</code> means unlimited.',
+      "features.f6.t": "SQLite or PostgreSQL",
+      "features.f6.d": "Zero-config SQLite by default, PostgreSQL for scale. One static Go binary; Docker images for amd64 and arm64.",
+      "features.strip": [
+        "Replies in <b>EN / RU</b>",
+        "Scores render as <b>⭐ stars</b>",
+        "<b>UTC</b> schedule",
+        "WebSocket with auto-reconnect",
+        "Go <b>1.26</b>+, AGENTS-friendly repo"
+      ],
+
+      "commands.eyebrow": "Commands",
+      "commands.title": "Talk to it like a teammate",
+      "commands.sub": "No slash commands to remember — just mention the bot. Commands are English-only; replies follow your language setting.",
+      "commands.c1": "Enable karma in the channel",
+      "commands.c2": "Give +1 karma to each mentioned teammate",
+      "commands.c3": "Top-10 for the current period",
+      "commands.c4": "Pause karma — scores are kept",
+      "commands.c5": "Cheat sheet",
+      "commands.dm": "DM",
+      "commands.c6": "Your karma across channels, in a direct message",
+      "commands.admin": "Admin",
+      "commands.c7": "List every channel where karma is enabled",
+
+      "start.eyebrow": "Quick start",
+      "start.title": "Running in two minutes",
+      "start.sub": "Create a bot account in Mattermost, fill two env vars, run one command. Full guide lives in the <a href='https://github.com/zam-zam/mattermost-karmabot#setup' target='_blank' rel='noopener' style='color:var(--blue);font-weight:600;text-decoration:none'>README</a>.",
+      "start.tab.compose": "Docker Compose",
+      "start.tab.docker": "Plain Docker",
+      "start.tab.source": "From source",
+      "start.then": 'Then invite <code>@karmabot</code> to a channel and say <code>@karmabot start</code> — done. The weekly game begins. <a href="https://github.com/zam-zam/mattermost-karmabot#setup" target="_blank" rel="noopener">Full setup guide →</a>',
+
+      "cta.title": "Ready to spread the karma?",
+      "cta.sub": "Self-hosted, single binary, your database. Stars are waiting.",
+      "cta.github": "Star on GitHub",
+      "cta.docs": "Read the docs",
+
+      "ui.copy": "Copy",
+      "ui.copied": "Copied ✓",
+
+      "footer.source": "Source",
+      "footer.docs": "Docs",
+      "footer.note": "Made with ⭐ for Mattermost teams.",
+      "footer.tm": "Mattermost is a trademark of Mattermost, Inc. This project is not affiliated with Mattermost."
+    },
+
+    ru: {
+      "html.lang": "ru",
+      "nav.features": "Возможности",
+      "nav.commands": "Команды",
+      "nav.start": "Быстрый старт",
+      "nav.github": "GitHub",
+
+      "hero.badge": "Свободный и открытый · Бот для Mattermost",
+      "hero.title1": "Благодарите",
+      "hero.title2": "звёздами",
+      "hero.lead": "karmabot — карма-бот для Mattermost: упомяните его, чтобы начислить коллеге балл, следите за недельными топами по каждому каналу — и не мусорьте в чате: все ответы прилетают в тред.",
+      "hero.cta.start": "Начать",
+      "hero.cta.github": "Смотреть на GitHub",
+
+      "chat.float": "🧵 отвечает в тредах",
+      "chat.placeholder": "Сообщение в #team — попробуйте @karmabot ++ @bob",
+      "chat.html":
+        '<div class="msg">' +
+          '<span class="avatar" style="background:#7c5cff">A</span>' +
+          '<div class="msg-body">' +
+            '<div class="msg-meta"><b>alice</b><time>10:02</time></div>' +
+            '<div class="msg-text"><span class="mention">@karmabot</span> ++ <span class="mention">@bob</span> спасибо, что спас релиз 🚀</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="thread">' +
+          BOT_AVATAR +
+          '<div class="msg-body">' +
+            '<div class="msg-meta"><b>karmabot</b><span class="bot-tag">BOT</span><time>10:02</time></div>' +
+            '<div class="msg-text">✅ <span class="mention">@bob</span>: +1 (карма в канале: <span class="stars">⭐⭐⭐</span> 3)</div>' +
+            '<div class="msg-sub">Осталось на сегодня: 4 из 5 · <span class="mention">@bob</span>: 1 из 2</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="thread-hint">↩ 2 ответа</div>' +
+        '<div class="msg">' +
+          '<span class="avatar" style="background:#2f9e77">B</span>' +
+          '<div class="msg-body">' +
+            '<div class="msg-meta"><b>bob</b><time>10:03</time></div>' +
+            '<div class="msg-text"><span class="mention">@karmabot</span> top</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="thread">' +
+          BOT_AVATAR +
+          '<div class="msg-body">' +
+            '<div class="msg-meta"><b>karmabot</b><span class="bot-tag">BOT</span><time>10:03</time></div>' +
+            '<div class="msg-text">🏅 Топ-10 за период:' +
+              '<div class="top-list">' +
+                '<div class="row"><span>1. <span class="mention">@alice</span></span><span class="score"><span class="stars">⭐⭐⭐⭐</span> <b>4</b></span></div>' +
+                '<div class="row"><span>2. <span class="mention">@bob</span></span><span class="score"><span class="stars">⭐⭐⭐</span> <b>3</b></span></div>' +
+                '<div class="row"><span>3. <span class="mention">@carol</span></span><span class="score"><span class="stars">⭐⭐</span> <b>2</b></span></div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>',
+
+      "features.eyebrow": "Возможности",
+      "features.title": "Всё, что нужно карма-ритуалу",
+      "features.sub": "Компактный бот без лишнего — никакого облака, только ваш Mattermost и ваша база данных.",
+      "features.f1.t": "Карма одним сообщением",
+      "features.f1.d": 'Упомяните бота и коллегу: <code>@karmabot ++ @alice</code>. Без слэш-команд и форм — карма начисляется мгновенно.',
+      "features.f2.t": "Треды прежде всего",
+      "features.f2.d": "Ответы всегда прилетают в тред команды — канал остаётся чистым.",
+      "features.f3.t": "Счёт по каждому каналу",
+      "features.f3.d": 'Карма изолирована по каналам: герои <code>#dev</code> не попадают в <code>#random</code>.',
+      "features.f4.t": "Недельные периоды",
+      "features.f4.d": 'Каждые <code>KARMABOT_PERIOD_DAYS</code> дней (по умолчанию 7) таблица мягко обнуляется в 00:00 UTC, и бот публикует топ-5.',
+      "features.f5.t": "Лимиты от фарма",
+      "features.f5.d": '5 кармы в день всего и 2 одному человеку — всё настраивается; <code>0</code> снимает лимит.',
+      "features.f6.t": "SQLite или PostgreSQL",
+      "features.f6.d": "SQLite без настройки из коробки или PostgreSQL для масштаба. Один бинарник Go; Docker-образы для amd64 и arm64.",
+      "features.strip": [
+        "Ответы на <b>EN / RU</b>",
+        "Счёт отрисовывается <b>⭐ звёздами</b>",
+        "Расписание в <b>UTC</b>",
+        "WebSocket с автопереподключением",
+        "Go <b>1.26</b>+"
+
+      ],
+
+      "commands.eyebrow": "Команды",
+      "commands.title": "Общайтесь, как с коллегой",
+      "commands.sub": "Не нужно запоминать слэш-команды — просто упомяните бота. Команды только английские; язык ответов настраивается.",
+      "commands.c1": "Включить карму в канале",
+      "commands.c2": "Дать +1 кармы каждому упомянутому",
+      "commands.c3": "Топ-10 за текущий период",
+      "commands.c4": "Поставить карму на паузу — счёт сохраняется",
+      "commands.c5": "Краткая справка",
+      "commands.dm": "ЛС",
+      "commands.c6": "Твоя карма по каналам — в личных сообщениях боту",
+      "commands.admin": "Админ",
+      "commands.c7": "Список всех каналов с включённой кармой",
+
+      "start.eyebrow": "Быстрый старт",
+      "start.title": "Запуск за две минуты",
+      "start.sub": "Создайте бот-аккаунт в Mattermost, заполните две переменные окружения, запустите одну команду. Полная инструкция — в <a href='https://github.com/zam-zam/mattermost-karmabot#setup' target='_blank' rel='noopener' style='color:var(--blue);font-weight:600;text-decoration:none'>README</a>.",
+      "start.tab.compose": "Docker Compose",
+      "start.tab.docker": "Просто Docker",
+      "start.tab.source": "Из исходников",
+      "start.then": 'Затем пригласите <code>@karmabot</code> в канал и напишите <code>@karmabot start</code> — готово, недельная игра началась. <a href="https://github.com/zam-zam/mattermost-karmabot#setup" target="_blank" rel="noopener">Полная инструкция →</a>',
+
+      "cta.title": "Готовы раздавать карму?",
+      "cta.sub": "Self-hosted, один бинарник, ваша база данных. Звёзды ждут.",
+      "cta.github": "Звезда на GitHub",
+      "cta.docs": "Читать документацию",
+
+      "ui.copy": "Копировать",
+      "ui.copied": "Скопировано ✓",
+
+      "footer.source": "Исходники",
+      "footer.docs": "Документация",
+      "footer.note": "Сделано с ⭐ для команд в Mattermost.",
+      "footer.tm": "Mattermost — товарный знак Mattermost, Inc. Проект не связан с Mattermost."
+    }
+  };
+
+  var STORAGE_KEY = "karmabot-lang";
+
+  function detectLang() {
+    try {
+      var saved = localStorage.getItem(STORAGE_KEY);
+      if (saved === "en" || saved === "ru") return saved;
+    } catch (e) { /* private mode */ }
+    var nav = (navigator.language || navigator.userLanguage || "en").toLowerCase();
+    return nav.indexOf("ru") === 0 ? "ru" : "en";
+  }
+
+  function applyLang(lang) {
+    var dict = I18N[lang];
+    document.documentElement.lang = dict["html.lang"];
+
+    var nodes = document.querySelectorAll("[data-i18n]");
+    for (var i = 0; i < nodes.length; i++) {
+      var key = nodes[i].getAttribute("data-i18n");
+      if (dict[key] !== undefined) nodes[i].textContent = dict[key];
+    }
+    var htmlNodes = document.querySelectorAll("[data-i18n-html]");
+    for (var j = 0; j < htmlNodes.length; j++) {
+      var hKey = htmlNodes[j].getAttribute("data-i18n-html");
+      if (dict[hKey] !== undefined) htmlNodes[j].innerHTML = dict[hKey];
+    }
+
+    document.getElementById("chatBody").innerHTML = dict["chat.html"];
+
+    var strip = document.getElementById("featuresStrip");
+    strip.innerHTML = "";
+    dict["features.strip"].forEach(function (item) {
+      var chip = document.createElement("span");
+      chip.className = "chip";
+      chip.innerHTML = item;
+      strip.appendChild(chip);
+    });
+
+    document.getElementById("lang-en").classList.toggle("active", lang === "en");
+    document.getElementById("lang-ru").classList.toggle("active", lang === "ru");
+
+    try { localStorage.setItem(STORAGE_KEY, lang); } catch (e) { /* private mode */ }
+  }
+
+  document.getElementById("lang-en").addEventListener("click", function () { applyLang("en"); });
+  document.getElementById("lang-ru").addEventListener("click", function () { applyLang("ru"); });
+
+  // copy buttons
+  var copyButtons = document.querySelectorAll(".copy-btn");
+  copyButtons.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var text = btn.getAttribute("data-copy");
+      var label = btn.querySelector("span");
+      var done = function () {
+        var dict = I18N[document.documentElement.lang === "ru" ? "ru" : "en"];
+        var original = dict["ui.copy"];
+        label.textContent = dict["ui.copied"];
+        btn.classList.add("done");
+        setTimeout(function () {
+          label.textContent = original;
+          btn.classList.remove("done");
+        }, 1600);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); } catch (e) { /* noop */ }
+        document.body.removeChild(ta);
+        done();
+      }
+    });
+  });
+
+  // quickstart tabs
+  var tabs = document.querySelectorAll(".qs-tab");
+  tabs.forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      tabs.forEach(function (t) {
+        t.classList.toggle("active", t === tab);
+        t.setAttribute("aria-selected", t === tab ? "true" : "false");
+      });
+      document.querySelectorAll(".qs-pane").forEach(function (pane) {
+        pane.classList.toggle("active", pane.getAttribute("data-pane") === tab.getAttribute("data-tab"));
+      });
+    });
+  });
+
+  // reveal on scroll
+  if ("IntersectionObserver" in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("visible");
+          io.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12 });
+    document.querySelectorAll(".reveal").forEach(function (el) { io.observe(el); });
+  } else {
+    document.querySelectorAll(".reveal").forEach(function (el) { el.classList.add("visible"); });
+  }
+
+  // feature card glow follows cursor
+  document.querySelectorAll(".feature").forEach(function (card) {
+    card.addEventListener("pointermove", function (e) {
+      var rect = card.getBoundingClientRect();
+      card.style.setProperty("--mx", ((e.clientX - rect.left) / rect.width * 100) + "%");
+    });
+  });
+
+  // hero star particles
+  var field = document.getElementById("starField");
+  var glyphs = ["✦", "✧", "★", "✶"];
+  for (var s = 0; s < 26; s++) {
+    var p = document.createElement("span");
+    p.className = "particle";
+    p.textContent = glyphs[Math.floor(Math.random() * glyphs.length)];
+    p.style.left = (Math.random() * 100) + "%";
+    p.style.top = (Math.random() * 100) + "%";
+    p.style.fontSize = (8 + Math.random() * 12) + "px";
+    p.style.setProperty("--dur", (3 + Math.random() * 5) + "s");
+    p.style.setProperty("--delay", (Math.random() * 5) + "s");
+    field.appendChild(p);
+  }
+
+  applyLang(detectLang());
+})();
+</script>
+</body>
+</html>

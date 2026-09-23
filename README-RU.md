@@ -2,6 +2,8 @@
 
 **Русский** | [English](README.md)
 
+[![Website](https://img.shields.io/badge/сайт-zam--zam.github.io-4da3ff?style=flat-square)](https://zam-zam.github.io/mattermost-karmabot/)
+
 Карма-бот для [Mattermost](https://mattermost.com) (проверен на 10.10.x).
 Коллеги благодарят друг друга, упоминая бота; бот ведёт рейтинг кармы
 по каналам за скользящие периоды (по умолчанию недельные) с дневными
