@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +40,9 @@ func New(siteURL, token string, log *slog.Logger) (*Client, error) {
 	base := strings.TrimRight(siteURL, "/")
 	api := model.NewAPIv4Client(base)
 	api.SetOAuthToken(token)
+	// Client4 ships a plain http.Client; swap in one whose transport retries
+	// transient failures, covering every REST call the wrapper makes.
+	api.HTTPClient = &http.Client{Transport: newRetryTransport(nil, log)}
 
 	me, _, err := api.GetMe(context.Background(), "")
 	if err != nil {

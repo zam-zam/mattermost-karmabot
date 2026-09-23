@@ -15,6 +15,10 @@ announces the period's results at each rollover.
 - Karma periods roll over every **7 days by default** at 00:00 UTC
   (`KARMABOT_PERIOD_DAYS`; soft reset: history is kept, each period starts a
   fresh scoreboard).
+- Mattermost API calls are retried automatically on transient failures
+  (network errors, `429`/`502`/`503`, and `500`/`504` for read-only requests)
+  with capped exponential backoff, so a blip does not drop a karma reply; the
+  WebSocket reconnects the same way.
 
 ## Commands
 
@@ -160,7 +164,7 @@ Layout:
 cmd/karmabot/          wiring, signal handling
 internal/config/       envconfig + .env loading
 internal/storage/      SQLite/PostgreSQL schema and queries
-internal/mmclient/     Mattermost REST + WebSocket client with reconnect
+internal/mmclient/     Mattermost REST + WebSocket client with retries and reconnect
 internal/bot/          event routing, commands, localized messages, periods
 internal/scheduler/    period-rollover summary
 ```
