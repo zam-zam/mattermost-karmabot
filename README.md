@@ -1,5 +1,7 @@
 # karmabot
 
+**English** | [Русский](README-RU.md)
+
 A karma bot for [Mattermost](https://mattermost.com) (tested against 10.10.x).
 Teammates thank each other by mentioning the bot; the bot tracks per-channel
 karma scores over rolling periods (weekly by default) with daily limits, and

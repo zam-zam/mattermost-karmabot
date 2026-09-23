@@ -48,6 +48,7 @@ Maintain idiomatic Go layout structures:
 * **Docs Location:** Keep docs in README.md file
 * **Configuration docs:** Document all configurable params with their purpose and default values in the follwing table format `Param | default value | description`  
 * **Docs Freshness:**  If a new feature or command-line flag is introduced, update the root `README.md`
+* **Docs Language** Write docs in english and russian languages. Files names: `README.md` for english, `README-RU.md` for russian
 
 ## Commit Guidelines
 You are allowed to make atomic commits only when a complete logical unit of work is done and verified.
