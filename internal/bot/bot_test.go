@@ -116,7 +116,7 @@ func newTestBot(t *testing.T, lang string, admin ...string) (*Bot, *fakeClient) 
 	b, err := New(client, store, log, Options{
 		Messages:      msgs,
 		Limits:        Limits{DailyTotal: 5, DailyPerTarget: 2},
-		Period:        Period{Days: 7},
+		Period:        mustPeriod(t, "week", "UTC", "09:00"),
 		AdminUsername: adminUsername,
 	})
 	if err != nil {
@@ -282,7 +282,7 @@ func TestDirectMessages(t *testing.T) {
 
 	say(t, b, "dm", "u-bob", "karma")
 	reply := client.lastReply()
-	wantContains(t, reply, "Твоя карма за текущий период", "dm header")
+	wantContains(t, reply, "Твоя карма за неделю", "dm header")
 	wantContains(t, reply, "• dev — ⭐ 1", "dm entry")
 
 	say(t, b, "dm", "u-bob", "help")
@@ -394,7 +394,7 @@ func TestEnglishReplies(t *testing.T) {
 
 	say(t, b, "dm", "u-bob", "karma")
 	reply = client.lastReply()
-	wantContains(t, reply, "Your karma this period", "dm header")
+	wantContains(t, reply, "Your karma this week", "dm header")
 	wantContains(t, reply, "• dev — ⭐ 1", "dm entry")
 
 	say(t, b, "dm", "u-bob", "what?")
@@ -436,7 +436,7 @@ func TestNewRejectsInvalidLimits(t *testing.T) {
 			opts := Options{
 				Messages: &Messages{},
 				Limits:   tt.limits,
-				Period:   Period{Days: 7},
+				Period:   mustPeriod(t, "week", "UTC", "09:00"),
 			}
 			if _, err := New(client, nil, nil, opts); err == nil {
 				t.Error("New succeeded with invalid limits, want error")
@@ -450,21 +450,25 @@ func TestNewRejectsInvalidPeriodAndNilMessages(t *testing.T) {
 		me: &model.User{Id: "bot-1", Username: "karmabot"},
 	}
 
-	for _, days := range []int{0, 366} {
+	for _, period := range []Period{
+		{Kind: "daily", Loc: time.UTC},
+		{Kind: ""},
+		{Kind: KindWeek}, // no location
+	} {
 		opts := Options{
 			Messages: &Messages{},
 			Limits:   Limits{DailyTotal: 5, DailyPerTarget: 2},
-			Period:   Period{Days: days},
+			Period:   period,
 		}
 		if _, err := New(client, nil, nil, opts); err == nil {
-			t.Errorf("New with Period{Days:%d} succeeded, want error", days)
+			t.Errorf("New with Period{%v} succeeded, want error", period)
 		}
 	}
 
 	opts := Options{
 		Messages: nil,
 		Limits:   Limits{DailyTotal: 5, DailyPerTarget: 2},
-		Period:   Period{Days: 7},
+		Period:   mustPeriod(t, "week", "UTC", "09:00"),
 	}
 	if _, err := New(client, nil, nil, opts); err == nil {
 		t.Error("New with nil Messages succeeded, want error")
@@ -485,7 +489,7 @@ func TestNewAcceptsUnlimitedLimits(t *testing.T) {
 		opts := Options{
 			Messages: &Messages{},
 			Limits:   limits,
-			Period:   Period{Days: 7},
+			Period:   mustPeriod(t, "week", "UTC", "09:00"),
 		}
 		if _, err := New(client, nil, nil, opts); err != nil {
 			t.Errorf("New(%+v): %v", limits, err)
@@ -530,27 +534,37 @@ func TestUnlimitedTotalWithPerTargetLimit(t *testing.T) {
 	wantContains(t, client.lastReply(), "этому человеку на сегодня хватит", "per-target hit")
 }
 
-// TestThirtyDayPeriodFlow proves a longer period keeps karma across week
-// boundaries: karma granted on 2026-08-26 is still on the scoreboard on
-// 2026-09-10, which belongs to a different week but the same 30-day
-// period (2026-08-18 … 2026-09-17).
-func TestThirtyDayPeriodFlow(t *testing.T) {
+// TestMonthPeriodFlow proves a month period keeps karma across week
+// boundaries: karma granted on 2026-09-10 is still on the scoreboard on
+// 2026-09-20 (a different week, the same September), and October 1
+// starts a fresh scoreboard.
+func TestMonthPeriodFlow(t *testing.T) {
 	b, client := newTestBot(t, "en")
-	b.period = Period{Days: 30}
+	b.period = mustPeriod(t, "month", "UTC", "09:00")
+	b.now = func() time.Time {
+		return time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	}
 	startKarma(t, b, "ch1")
 
 	say(t, b, "ch1", "u-alice", "@karmabot ++ @bob")
 	say(t, b, "ch1", "u-alice", "@karmabot top")
-	wantContains(t, client.lastReply(), "1. @bob — ⭐ 1", "top in the same period")
+	wantContains(t, client.lastReply(), "1. @bob — ⭐ 1", "top in September")
+	wantContains(t, client.lastReply(), "this month (September)", "month bounds in header")
 
 	b.now = func() time.Time {
-		return time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+		return time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
 	}
 	say(t, b, "ch1", "u-alice", "@karmabot top")
 	wantContains(t, client.lastReply(), "1. @bob — ⭐ 1", "top persists across the week boundary")
 
 	say(t, b, "dm", "u-bob", "karma")
 	wantContains(t, client.lastReply(), "• dev — ⭐ 1", "dm report persists")
+
+	b.now = func() time.Time {
+		return time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	}
+	say(t, b, "ch1", "u-alice", "@karmabot top")
+	wantContains(t, client.lastReply(), "No one has received karma this month yet", "fresh scoreboard in October")
 }
 
 // TestRepliesGoToCommandThread pins that every command answer is posted

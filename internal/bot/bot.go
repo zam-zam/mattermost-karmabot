@@ -14,11 +14,12 @@ import (
 	"karmabot/internal/storage"
 )
 
-// topLimit is how many leaders the weekly `top` command shows.
+// topLimit is how many leaders the period `top` command shows.
 const topLimit = 10
 
 // Limits are the per-day karma budgets one giver has in a channel,
-// refreshed every UTC calendar day. Zero means unlimited.
+// refreshed every calendar day in the configured location. Zero means
+// unlimited.
 type Limits struct {
 	DailyTotal     int
 	DailyPerTarget int

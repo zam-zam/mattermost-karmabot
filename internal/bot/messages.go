@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"golang.org/x/text/language"
@@ -32,6 +33,7 @@ var localeFiles = []string{
 // themselves are English-only.
 type Messages struct {
 	loc *i18n.Localizer
+	tag language.Tag
 }
 
 // NewMessages builds the message catalog for lang, e.g. "en" or "ru"
@@ -56,7 +58,7 @@ func NewMessages(lang string) (*Messages, error) {
 	}
 
 	best, _, _ := supportedMatcher.Match(tag)
-	return &Messages{loc: i18n.NewLocalizer(bundle, best.String())}, nil
+	return &Messages{loc: i18n.NewLocalizer(bundle, best.String()), tag: best}, nil
 }
 
 // t localizes one message. MustLocalize is safe because the locale parity
@@ -65,16 +67,6 @@ func (m *Messages) t(id string, data map[string]any) string {
 	return m.loc.MustLocalize(&i18n.LocalizeConfig{
 		MessageID:    id,
 		TemplateData: data,
-	})
-}
-
-// tPlural localizes a message that has plural forms, choosing the form
-// for count.
-func (m *Messages) tPlural(id string, data map[string]any, count int) string {
-	return m.loc.MustLocalize(&i18n.LocalizeConfig{
-		MessageID:    id,
-		TemplateData: data,
-		PluralCount:  count,
 	})
 }
 
@@ -150,24 +142,42 @@ func (m *Messages) noNegative() string {
 	return m.t("noNegative", nil)
 }
 
-func (m *Messages) topHeader(limit int) string {
-	return m.t("topHeader", map[string]any{"TopLimit": limit})
+// topHeader renders the leaderboard header for the period containing now.
+func (m *Messages) topHeader(limit int, p Period, now time.Time) string {
+	return m.t(p.kindID("topHeaderWeek", "topHeaderMonth"), map[string]any{
+		"TopLimit": limit,
+		"Bounds":   m.periodBounds(p, p.Start(now)),
+	})
 }
 
-func (m *Messages) topEmpty() string {
-	return m.t("topEmpty", nil)
+func (m *Messages) topEmpty(p Period) string {
+	return m.t(p.kindID("topEmptyWeek", "topEmptyMonth"), nil)
 }
 
-func (m *Messages) periodHeader() string {
-	return m.t("periodHeader", nil)
+// PeriodTop renders the end-of-period message the scheduler posts to
+// each channel; start is the finished period's rollover instant.
+func (m *Messages) PeriodTop(entries []storage.KarmaEntry, p Period, start time.Time) string {
+	return m.formatRanked(
+		m.t(p.kindID("weekResultsHeader", "monthResultsHeader"),
+			map[string]any{"Bounds": m.periodBounds(p, start)}),
+		entries,
+	)
 }
 
-func (m *Messages) dmHeader() string {
-	return m.t("dmHeader", nil)
+// PeriodStarted renders the announcement of a freshly begun period.
+func (m *Messages) PeriodStarted(p Period, start time.Time) string {
+	return m.t(p.kindID("weekStarted", "monthStarted"),
+		map[string]any{"Bounds": m.periodBounds(p, start)})
 }
 
-func (m *Messages) dmEmpty() string {
-	return m.t("dmEmpty", nil)
+func (m *Messages) dmHeader(p Period, now time.Time) string {
+	return m.t(p.kindID("dmHeaderWeek", "dmHeaderMonth"), map[string]any{
+		"Bounds": m.periodBounds(p, p.Start(now)),
+	})
+}
+
+func (m *Messages) dmEmpty(p Period) string {
+	return m.t(p.kindID("dmEmptyWeek", "dmEmptyMonth"), nil)
 }
 
 func (m *Messages) dmUnknown() string {
@@ -216,10 +226,41 @@ func (m *Messages) help(botUsername string, limits Limits, period Period) string
 	})
 }
 
-// periodLine renders the help sentence about period length and rollover,
-// with the grammatical plural form for the day count.
+// periodLine renders the help sentence about the period cadence and
+// rollover time.
 func (m *Messages) periodLine(period Period) string {
-	return m.tPlural("periodLine", map[string]any{"PeriodDays": period.Days}, period.Days)
+	return m.t(period.kindID("periodLineWeek", "periodLineMonth"), map[string]any{
+		"Time": period.Rollover(),
+		"Zone": period.Loc.String(),
+	})
+}
+
+// periodBounds renders the human-readable bounds of the period starting
+// at start: a date range for weeks, the month name for months.
+func (m *Messages) periodBounds(p Period, start time.Time) string {
+	local := start.In(p.Loc)
+	if p.Kind == KindMonth {
+		return m.t("monthBounds", map[string]any{
+			"Month": m.monthName(local.Month(), false),
+		})
+	}
+	end := p.End(start).In(p.Loc)
+	return m.t("weekBounds", map[string]any{
+		"StartDay":   local.Day(),
+		"StartMonth": m.monthName(local.Month(), true),
+		"EndDay":     end.Day(),
+		"EndMonth":   m.monthName(end.Month(), true),
+	})
+}
+
+// monthName localizes a month name, in the genitive case when the active
+// language's date ranges call for it (Russian: «25 августа»).
+func (m *Messages) monthName(month time.Month, genitive bool) string {
+	id := fmt.Sprintf("month%d", month)
+	if genitive && m.tag == language.Russian {
+		id = fmt.Sprintf("monthGen%d", month)
+	}
+	return m.t(id, nil)
 }
 
 // limitsLine renders the help sentence describing the daily limits,
@@ -243,23 +284,18 @@ func (m *Messages) limitsLine(limits Limits) string {
 }
 
 // top renders the current period's leaderboard for a channel.
-func (m *Messages) top(limit int, entries []storage.KarmaEntry) string {
-	return m.formatRanked(m.topHeader(limit), entries)
-}
-
-// PeriodTop renders the end-of-period message the scheduler posts to
-// each channel.
-func (m *Messages) PeriodTop(entries []storage.KarmaEntry) string {
-	return m.formatRanked(m.periodHeader(), entries)
+func (m *Messages) top(limit int, p Period, now time.Time, entries []storage.KarmaEntry) string {
+	return m.formatRanked(m.topHeader(limit, p, now), entries)
 }
 
 // dmReport renders the direct-message summary of a user's karma per
-// channel.
-func (m *Messages) dmReport(entries []storage.ChannelKarma) string {
+// channel for the period containing now.
+func (m *Messages) dmReport(entries []storage.ChannelKarma, p Period, now time.Time) string {
 	if len(entries) == 0 {
-		return m.dmEmpty()
+		return m.dmEmpty(p)
 	}
-	return strings.Join(m.dmLines(entries), "\n")
+	lines := m.dmLines(entries, p, now)
+	return strings.Join(lines, "\n")
 }
 
 // status renders the admin's list of channels with karma enabled.
@@ -275,9 +311,9 @@ func (m *Messages) status(channels []storage.Channel) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m *Messages) dmLines(entries []storage.ChannelKarma) []string {
+func (m *Messages) dmLines(entries []storage.ChannelKarma, p Period, now time.Time) []string {
 	lines := make([]string, 0, len(entries)+1)
-	lines = append(lines, m.dmHeader())
+	lines = append(lines, m.dmHeader(p, now))
 	for _, e := range entries {
 		lines = append(lines, m.dmEntry(e.ChannelName, karmaStars(e.Karma)))
 	}

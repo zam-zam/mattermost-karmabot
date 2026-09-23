@@ -4,11 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>karmabot — karma bot for Mattermost</title>
-<meta name="description" content="Free and open-source karma bot for Mattermost: thank teammates with a single message, track per-channel weekly tops, keep channels clean with thread replies.">
+<meta name="description" content="Free and open-source karma bot for Mattermost: thank teammates with a single message, track per-channel weekly or monthly tops, keep channels clean with thread replies.">
 <meta name="theme-color" content="#0a0e16">
 <meta property="og:type" content="website">
 <meta property="og:title" content="karmabot — karma bot for Mattermost">
-<meta property="og:description" content="Thank teammates with a single message, track per-channel weekly tops, keep channels clean with thread replies.">
+<meta property="og:description" content="Thank teammates with a single message, track per-channel weekly or monthly tops, keep channels clean with thread replies.">
 <meta property="og:url" content="https://zam-zam.github.io/mattermost-karmabot/">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230a0e16'/%3E%3Cpath d='M32 12l6.2 13.6 14.8 1.8-10.9 10.1 3 14.6L32 45l-13.1 7.1 3-14.6L11 27.4l14.8-1.8z' fill='%23ffc94d'/%3E%3C/svg%3E">
 <style>
@@ -1047,7 +1047,7 @@
       "hero.badge": "Free & open source · Bot for Mattermost",
       "hero.title1": "Say thanks",
       "hero.title2": "with stars",
-      "hero.lead": "karmabot is a karma bot for Mattermost: mention it to give a teammate a point, watch weekly per-channel tops — and keep the channel clean, because every reply lands in a thread.",
+      "hero.lead": "karmabot is a karma bot for Mattermost: mention it to give a teammate a point, watch weekly or monthly per-channel tops — and keep the channel clean, because every reply lands in a thread.",
       "hero.cta.start": "Get started",
       "hero.cta.github": "View on GitHub",
 
@@ -1081,7 +1081,7 @@
           BOT_AVATAR +
           '<div class="msg-body">' +
             '<div class="msg-meta"><b>karmabot</b><span class="bot-tag">BOT</span><time>10:03</time></div>' +
-            '<div class="msg-text">🏅 Top-10 this period:' +
+            '<div class="msg-text">🏅 Top-10 this week (24 August – 30 August):' +
               '<div class="top-list">' +
                 '<div class="row"><span>1. <span class="mention">@alice</span></span><span class="score"><span class="stars">⭐⭐⭐⭐</span> <b>4</b></span></div>' +
                 '<div class="row"><span>2. <span class="mention">@bob</span></span><span class="score"><span class="stars">⭐⭐⭐</span> <b>3</b></span></div>' +
@@ -1100,8 +1100,8 @@
       "features.f2.d": "Replies always land in the command's thread, so your channel stays clean.",
       "features.f3.t": "Per-channel scoreboards",
       "features.f3.d": 'Karma is isolated per channel: heroes of <code>#dev</code> don\'t leak into <code>#random</code>.',
-      "features.f4.t": "Weekly roll-overs",
-      "features.f4.d": 'Every <code>KARMABOT_PERIOD_DAYS</code> days (7 by default) the scoreboard softly resets at 00:00 UTC and the bot posts a top-5 digest.',
+      "features.f4.t": "Weekly & monthly roll-overs",
+      "features.f4.d": 'The scoreboard follows calendar <code>week</code>s (default) or <code>month</code>s: at each roll-over — 09:00 by default, in any timezone — the bot posts the finished period\'s top-5 with its bounds and announces the new one.',
       "features.f5.t": "Anti-farming limits",
       "features.f5.d": '5 karma a day total, 2 per teammate — both configurable; <code>0</code> means unlimited.',
       "features.f6.t": "SQLite or PostgreSQL",
@@ -1109,7 +1109,7 @@
       "features.strip": [
         "Replies in <b>EN / RU</b>",
         "Scores render as <b>⭐ stars</b>",
-        "<b>UTC</b> schedule",
+        "Roll-overs in <b>any timezone</b>",
         "WebSocket with auto-reconnect",
         "Go <b>1.26</b>+, AGENTS-friendly repo"
       ],
@@ -1133,7 +1133,7 @@
       "start.tab.compose": "Docker Compose",
       "start.tab.docker": "Plain Docker",
       "start.tab.source": "From source",
-      "start.then": 'Then invite <code>@karmabot</code> to a channel and say <code>@karmabot start</code> — done. The weekly game begins. <a href="https://github.com/zam-zam/mattermost-karmabot#setup" target="_blank" rel="noopener">Full setup guide →</a>',
+      "start.then": 'Then invite <code>@karmabot</code> to a channel and say <code>@karmabot start</code> — done. The karma game begins. <a href="https://github.com/zam-zam/mattermost-karmabot#setup" target="_blank" rel="noopener">Full setup guide →</a>',
 
       "cta.title": "Ready to spread the karma?",
       "cta.sub": "Self-hosted, single binary, your database. Stars are waiting.",
@@ -1159,7 +1159,7 @@
       "hero.badge": "Свободный и открытый · Бот для Mattermost",
       "hero.title1": "Благодарите",
       "hero.title2": "звёздами",
-      "hero.lead": "karmabot — карма-бот для Mattermost: упомяните его, чтобы начислить коллеге балл, следите за недельными топами по каждому каналу — и не мусорьте в чате: все ответы прилетают в тред.",
+      "hero.lead": "karmabot — карма-бот для Mattermost: упомяните его, чтобы начислить коллеге балл, следите за недельными или месячными топами по каждому каналу — и не мусорьте в чате: все ответы прилетают в тред.",
       "hero.cta.start": "Начать",
       "hero.cta.github": "Смотреть на GitHub",
 
@@ -1193,7 +1193,7 @@
           BOT_AVATAR +
           '<div class="msg-body">' +
             '<div class="msg-meta"><b>karmabot</b><span class="bot-tag">BOT</span><time>10:03</time></div>' +
-            '<div class="msg-text">🏅 Топ-10 за период:' +
+            '<div class="msg-text">🏅 Топ-10 за неделю (с 24 по 30 августа):' +
               '<div class="top-list">' +
                 '<div class="row"><span>1. <span class="mention">@alice</span></span><span class="score"><span class="stars">⭐⭐⭐⭐</span> <b>4</b></span></div>' +
                 '<div class="row"><span>2. <span class="mention">@bob</span></span><span class="score"><span class="stars">⭐⭐⭐</span> <b>3</b></span></div>' +
@@ -1212,8 +1212,8 @@
       "features.f2.d": "Ответы всегда прилетают в тред команды — канал остаётся чистым.",
       "features.f3.t": "Счёт по каждому каналу",
       "features.f3.d": 'Карма изолирована по каналам: герои <code>#dev</code> не попадают в <code>#random</code>.',
-      "features.f4.t": "Недельные периоды",
-      "features.f4.d": 'Каждые <code>KARMABOT_PERIOD_DAYS</code> дней (по умолчанию 7) таблица мягко обнуляется в 00:00 UTC, и бот публикует топ-5.',
+      "features.f4.t": "Недели и месяцы",
+      "features.f4.d": 'Рейтинг живёт календарными <code>неделями</code> (по умолчанию) или <code>месяцами</code>: при каждой смене — по умолчанию в 09:00, в любой таймзоне — бот публикует топ-5 завершившегося периода с его рамками и анонсирует новый.',
       "features.f5.t": "Лимиты от фарма",
       "features.f5.d": '5 кармы в день всего и 2 одному человеку — всё настраивается; <code>0</code> снимает лимит.',
       "features.f6.t": "SQLite или PostgreSQL",
@@ -1221,7 +1221,7 @@
       "features.strip": [
         "Ответы на <b>EN / RU</b>",
         "Счёт отрисовывается <b>⭐ звёздами</b>",
-        "Расписание в <b>UTC</b>",
+        "Смена периода в <b>любой таймзоне</b>",
         "WebSocket с автопереподключением",
         "Go <b>1.26</b>+"
 
@@ -1246,7 +1246,7 @@
       "start.tab.compose": "Docker Compose",
       "start.tab.docker": "Просто Docker",
       "start.tab.source": "Из исходников",
-      "start.then": 'Затем пригласите <code>@karmabot</code> в канал и напишите <code>@karmabot start</code> — готово, недельная игра началась. <a href="https://github.com/zam-zam/mattermost-karmabot#setup" target="_blank" rel="noopener">Полная инструкция →</a>',
+      "start.then": 'Затем пригласите <code>@karmabot</code> в канал и напишите <code>@karmabot start</code> — готово, карма-игра началась. <a href="https://github.com/zam-zam/mattermost-karmabot#setup" target="_blank" rel="noopener">Полная инструкция →</a>',
 
       "cta.title": "Готовы раздавать карму?",
       "cta.sub": "Self-hosted, один бинарник, ваша база данных. Звёзды ждут.",

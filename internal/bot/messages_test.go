@@ -1,12 +1,14 @@
 package bot
 
 import (
-	"bytes"
 	"encoding/json"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+	"time"
+
+	"karmabot/internal/storage"
 )
 
 // loadLocale decodes one embedded catalog into an id → raw value map;
@@ -123,8 +125,7 @@ func formNames(forms map[string]string) []string {
 }
 
 // TestEveryMessageLocalizes renders every known ID in both languages with
-// sample data, catching broken templates early. Plural-form messages get
-// a count; plain messages must not receive one.
+// sample data, catching broken templates early.
 func TestEveryMessageLocalizes(t *testing.T) {
 	data := map[string]any{
 		"BotUsername":    "karmabot",
@@ -137,9 +138,17 @@ func TestEveryMessageLocalizes(t *testing.T) {
 		"DailyTotal":     5,
 		"DailyPerTarget": 2,
 		"ChannelName":    "dev",
+		"ChannelID":      "ch1",
 		"LimitsLine":     "Limits: at most 5 karma per day, of which at most 2 to one person.",
-		"PeriodLine":     "The period lasts 30 days and ends at 00:00 UTC.",
-		"PeriodDays":     30,
+		"PeriodLine":     "The scoreboard follows calendar weeks: results are announced every Monday at 09:00 (UTC).",
+		"Bounds":         "24 August – 30 August",
+		"StartDay":       24,
+		"StartMonth":     "August",
+		"EndDay":         30,
+		"EndMonth":       "August",
+		"Month":          "September",
+		"Time":           "09:00",
+		"Zone":           "UTC",
 	}
 	en := loadLocale(t, "locales/active.en.json")
 
@@ -148,23 +157,12 @@ func TestEveryMessageLocalizes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewMessages(%q): %v", lang, err)
 		}
-		for id, raw := range en {
-			var got string
-			if isPluralValue(raw) {
-				got = m.tPlural(id, data, 5)
-			} else {
-				got = m.t(id, data)
-			}
-			if strings.Contains(got, "{{") {
+		for id := range en {
+			if got := m.t(id, data); strings.Contains(got, "{{") {
 				t.Errorf("%s/%s: unresolved placeholder in %q", lang, id, got)
 			}
 		}
 	}
-}
-
-// isPluralValue reports whether a catalog value is a plural-form object.
-func isPluralValue(raw json.RawMessage) bool {
-	return bytes.HasPrefix(bytes.TrimSpace(raw), []byte("{"))
 }
 
 func TestLanguageSelection(t *testing.T) {
@@ -173,13 +171,15 @@ func TestLanguageSelection(t *testing.T) {
 		t.Fatalf("NewMessages(en): %v", err)
 	}
 
+	week := mustPeriod(t, "week", "UTC", "09:00")
+
 	// Regional variants resolve to their base language.
 	ru, err := NewMessages("ru-RU")
 	if err != nil {
 		t.Fatalf("NewMessages(ru-RU): %v", err)
 	}
-	wantRu := "В этом периоде пока никто не получил карму."
-	if got := ru.topEmpty(); got != wantRu {
+	wantRu := "На этой неделе пока никто не получил карму."
+	if got := ru.topEmpty(week); got != wantRu {
 		t.Errorf("ru-RU topEmpty = %q, want %q", got, wantRu)
 	}
 
@@ -188,8 +188,8 @@ func TestLanguageSelection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMessages(de): %v", err)
 	}
-	if got := de.topEmpty(); got != en.topEmpty() {
-		t.Errorf("de topEmpty = %q, want English %q", got, en.topEmpty())
+	if got := de.topEmpty(week); got != en.topEmpty(week) {
+		t.Errorf("de topEmpty = %q, want English %q", got, en.topEmpty(week))
 	}
 
 	// Garbage fails fast at startup.
@@ -198,9 +198,12 @@ func TestLanguageSelection(t *testing.T) {
 	}
 }
 
-// TestPeriodLinePluralForms pins the CLDR plural forms for the day count
-// in both languages.
-func TestPeriodLinePluralForms(t *testing.T) {
+// TestPeriodLineVariants pins the help sentence for both period kinds in
+// both languages, including the configured rollover time and zone.
+func TestPeriodLineVariants(t *testing.T) {
+	week := mustPeriod(t, "week", "Europe/Moscow", "09:00")
+	month := mustPeriod(t, "month", "UTC", "00:30")
+
 	ru, err := NewMessages("ru")
 	if err != nil {
 		t.Fatalf("NewMessages(ru): %v", err)
@@ -211,27 +214,105 @@ func TestPeriodLinePluralForms(t *testing.T) {
 	}
 
 	tests := []struct {
-		lang    string
+		name    string
 		m       *Messages
-		days    int
+		period  Period
 		wantSub string
 	}{
-		{lang: "ru", m: ru, days: 1, wantSub: "1 день"},
-		{lang: "ru", m: ru, days: 2, wantSub: "2 дня"},
-		{lang: "ru", m: ru, days: 5, wantSub: "5 дней"},
-		{lang: "ru", m: ru, days: 11, wantSub: "11 дней"},
-		{lang: "ru", m: ru, days: 21, wantSub: "21 день"},
-		{lang: "ru", m: ru, days: 22, wantSub: "22 дня"},
-		{lang: "ru", m: ru, days: 30, wantSub: "30 дней"},
-		{lang: "en", m: en, days: 1, wantSub: "1 day"},
-		{lang: "en", m: en, days: 30, wantSub: "30 days"},
+		{name: "ru week", m: ru, period: week, wantSub: "каждый понедельник в 09:00 (Europe/Moscow)"},
+		{name: "ru month", m: ru, period: month, wantSub: "1-го числа каждого месяца в 00:30 (UTC)"},
+		{name: "en week", m: en, period: week, wantSub: "every Monday at 09:00 (Europe/Moscow)"},
+		{name: "en month", m: en, period: month, wantSub: "on the first day of each month at 00:30 (UTC)"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.lang, func(t *testing.T) {
-			got := tt.m.periodLine(Period{Days: tt.days})
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.m.periodLine(tt.period)
 			if !strings.Contains(got, tt.wantSub) {
-				t.Errorf("periodLine(%d days, %s) = %q, want to contain %q",
-					tt.days, tt.lang, got, tt.wantSub)
+				t.Errorf("periodLine(%s) = %q, want to contain %q",
+					tt.period.Kind, got, tt.wantSub)
+			}
+		})
+	}
+}
+
+// TestPeriodBounds pins the human-readable bounds: full month names,
+// Russian genitive in date ranges, and ranges crossing a month boundary.
+func TestPeriodBounds(t *testing.T) {
+	week := mustPeriod(t, "week", "UTC", "09:00")
+	month := mustPeriod(t, "month", "UTC", "09:00")
+
+	augStart := time.Date(2026, 8, 24, 9, 0, 0, 0, time.UTC)   // a Monday
+	crossStart := time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC) // Monday → Sunday Sep 6
+	septStart := time.Date(2026, 9, 1, 9, 0, 0, 0, time.UTC)
+
+	ru, err := NewMessages("ru")
+	if err != nil {
+		t.Fatalf("NewMessages(ru): %v", err)
+	}
+	en, err := NewMessages("en")
+	if err != nil {
+		t.Fatalf("NewMessages(en): %v", err)
+	}
+
+	tests := []struct {
+		name  string
+		m     *Messages
+		p     Period
+		start time.Time
+		want  string
+	}{
+		{name: "en week", m: en, p: week, start: augStart, want: "24 August – 30 August"},
+		{name: "en week across months", m: en, p: week, start: crossStart, want: "31 August – 6 September"},
+		{name: "en month", m: en, p: month, start: septStart, want: "September"},
+		{name: "ru week genitive", m: ru, p: week, start: augStart, want: "с 24 августа по 30 августа"},
+		{name: "ru week across months", m: ru, p: week, start: crossStart, want: "с 31 августа по 6 сентября"},
+		{name: "ru month", m: ru, p: month, start: septStart, want: "сентябрь"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.m.periodBounds(tt.p, tt.start); got != tt.want {
+				t.Errorf("periodBounds = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestPeriodTopAndStartedHeaders pins the scheduler messages: kind-named
+// headers with bounds.
+func TestPeriodTopAndStartedHeaders(t *testing.T) {
+	week := mustPeriod(t, "week", "UTC", "09:00")
+	month := mustPeriod(t, "month", "UTC", "09:00")
+	entries := []storage.KarmaEntry{{Username: "alice", Karma: 2}}
+
+	ru, err := NewMessages("ru")
+	if err != nil {
+		t.Fatalf("NewMessages(ru): %v", err)
+	}
+	en, err := NewMessages("en")
+	if err != nil {
+		t.Fatalf("NewMessages(en): %v", err)
+	}
+
+	tests := []struct {
+		name string
+		m    *Messages
+		p    Period
+	}{
+		{name: "en week", m: en, p: week},
+		{name: "en month", m: en, p: month},
+		{name: "ru week", m: ru, p: week},
+		{name: "ru month", m: ru, p: month},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			start := tt.p.Start(time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC))
+			top := tt.m.PeriodTop(entries, tt.p, start)
+			started := tt.m.PeriodStarted(tt.p, start)
+			if !strings.Contains(top, "@alice") || !strings.Contains(top, ":") {
+				t.Errorf("PeriodTop = %q, want a header and entries", top)
+			}
+			if strings.Contains(top, "{{") || strings.Contains(started, "{{") {
+				t.Errorf("unresolved placeholder in %q / %q", top, started)
 			}
 		})
 	}

@@ -118,10 +118,10 @@ func (b *Bot) cmdTop(ctx context.Context, th thread) {
 		return
 	}
 	if len(entries) == 0 {
-		b.reply(ctx, th, b.msg.topEmpty())
+		b.reply(ctx, th, b.msg.topEmpty(b.period))
 		return
 	}
-	b.reply(ctx, th, b.msg.top(topLimit, entries))
+	b.reply(ctx, th, b.msg.top(topLimit, b.period, b.now(), entries))
 }
 
 // resolvedTarget pairs a mention with its user, for budgets and replies.
@@ -156,8 +156,8 @@ func (b *Bot) cmdGrant(
 	}
 
 	now := b.now()
-	week := b.period.Key(now)
-	day := DayKey(now)
+	periodKey := b.period.Key(now)
+	day := b.period.DayKey(now)
 
 	totalGiven, perTarget, err := b.store.GivenOnDay(ctx, th.channelID, post.UserId, day)
 	if err != nil {
@@ -192,7 +192,7 @@ func (b *Bot) cmdGrant(
 		default:
 			newTotal, err := b.store.GrantKarma(ctx, storage.Grant{
 				ChannelID:      th.channelID,
-				Week:           week,
+				Week:           periodKey,
 				Day:            day,
 				GiverID:        post.UserId,
 				TargetID:       user.Id,
@@ -244,7 +244,7 @@ func (b *Bot) cmdMyKarma(ctx context.Context, th thread, userID string) {
 		b.internal(ctx, th, err, "reading user karma")
 		return
 	}
-	b.reply(ctx, th, b.msg.dmReport(entries))
+	b.reply(ctx, th, b.msg.dmReport(entries, b.period, b.now()))
 }
 
 // cmdStatus lists every channel with karma enabled; only the configured

@@ -6,17 +6,19 @@
 
 A karma bot for [Mattermost](https://mattermost.com) (tested against 10.10.x).
 Teammates thank each other by mentioning the bot; the bot tracks per-channel
-karma scores over rolling periods (weekly by default) with daily limits, and
-announces the period's results at each rollover.
+karma scores over calendar periods (weekly by default, or monthly) with
+daily limits, and announces the period's results at each rollover.
 
 - Bot replies are localized: **English by default**, Russian via
   `KARMABOT_LANGUAGE=ru`; commands are English-only.
 - SQLite (default) or PostgreSQL storage; karma is isolated per channel.
 - The bot always replies in the command's thread; a command sent inside
   an existing thread stays in it.
-- Karma periods roll over every **7 days by default** at 00:00 UTC
-  (`KARMABOT_PERIOD_DAYS`; soft reset: history is kept, each period starts a
-  fresh scoreboard).
+- Karma periods follow the **calendar**: weeks (default) or months,
+  rolling over at `KARMABOT_ROLLOVER_TIME` (09:00 by default) in
+  `KARMABOT_TIMEZONE` (UTC by default; the IANA database is embedded, so
+  it works in any container). Soft reset: history is kept, each period
+  starts a fresh scoreboard.
 - Mattermost API calls are retried automatically on transient failures
   (network errors, `429`/`502`/`503`, and `500`/`504` for read-only requests)
   with capped exponential backoff, so a blip does not drop a karma reply; the
@@ -29,7 +31,7 @@ In a channel (invite `@karmabot` first):
 | Command | Effect |
 | --- | --- |
 | `@karmabot start` | Enable karma in the channel |
-| `@karmabot stop` | Pause karma (data kept; `start` resumes the week) |
+| `@karmabot stop` | Pause karma (data kept; `start` resumes the current period) |
 | `@karmabot ++ @user [@user2 …]` | Give +1 karma to each mentioned user |
 | `@karmabot top` | Top-10 for the current period |
 | `@karmabot help` | Cheat sheet |
@@ -43,7 +45,8 @@ In a direct message to the bot:
 
 ### Limits
 
-Per channel, per UTC calendar day, a giver can hand out:
+Per channel, per calendar day in the configured timezone, a giver can hand
+out:
 
 - at most **5 karma in total** (default; `KARMABOT_DAILY_TOTAL_LIMIT`), and
 - at most **2 karma to the same person** (default;
@@ -56,20 +59,26 @@ Every `++` reply reports whether the karma was applied, the target's current
 channel total, and the remaining budgets (unlimited budgets are omitted).
 Self-karma is blocked; `--` is not supported.
 
-Scores everywhere (grant replies, `top`, weekly summary, DM report) are
+Scores everywhere (grant replies, `top`, period summary, DM report) are
 shown as stars: one star per point, then the total — e.g. 3 karma renders
 as `⭐⭐⭐ 3`.
 
 ### Period summary
 
-At each period rollover (every `KARMABOT_PERIOD_DAYS` days, 7 by default,
-at 00:00 UTC) the bot posts the finished period's top-5 to every enabled
-channel that had any karma. New karma after that moment counts toward the
-new period.
+Periods follow the calendar: **weeks** (default, Monday to Sunday) or
+**months**, rolling over at `KARMABOT_ROLLOVER_TIME` (09:00 by default) in
+`KARMABOT_TIMEZONE` (UTC by default). At each rollover the bot posts two
+messages to every enabled channel: the finished period's top-5 with its
+bounds (a date range for weeks, e.g. «24 August – 30 August»; the month
+name for months), and the new period's announcement with its bounds. New
+karma after that moment counts toward the new period.
 
-> Changing the period length on an existing database starts a fresh
-> scoreboard: older rows are kept but no longer shown, and the bot logs a
-> warning at startup about the ignored rows.
+> `KARMABOT_PERIOD_DAYS` (period length in days) is no longer supported;
+> if it is still set, the bot logs a warning at startup. Switching the
+> period kind on an existing database starts a fresh scoreboard: older
+> rows are kept but no longer shown, and the bot logs a warning at startup
+> about the ignored rows. Weekly data written by previous versions stays
+> compatible.
 
 ## Setup
 
@@ -95,9 +104,11 @@ Copy `.env.example` to `.env` (or export the variables):
 | `KARMABOT_DB_DSN` | — (required for postgres) | PostgreSQL connection string, e.g. `postgres://user:pass@host:5432/karmabot` |
 | `KARMABOT_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, or `error` |
 | `KARMABOT_LANGUAGE` | `en` | Reply language: `en` or `ru`; commands are English-only |
-| `KARMABOT_DAILY_TOTAL_LIMIT` | `5` | Max karma a giver may hand out per channel per UTC day; `0` = unlimited |
-| `KARMABOT_DAILY_PER_TARGET_LIMIT` | `2` | Max karma to the same person per UTC day; `0` = unlimited; must not exceed the total limit |
-| `KARMABOT_PERIOD_DAYS` | `7` | Scoreboard reset interval in days at 00:00 UTC (1–365) |
+| `KARMABOT_DAILY_TOTAL_LIMIT` | `5` | Max karma a giver may hand out per channel per day (in `KARMABOT_TIMEZONE`); `0` = unlimited |
+| `KARMABOT_DAILY_PER_TARGET_LIMIT` | `2` | Max karma to the same person per day; `0` = unlimited; must not exceed the total limit |
+| `KARMABOT_PERIOD` | `week` | Scoreboard period: `week` (calendar weeks from Monday) or `month` (calendar months from the 1st) |
+| `KARMABOT_TIMEZONE` | `UTC` | IANA timezone (e.g. `Europe/Moscow`) for period boundaries, the rollover time and daily limits; tzdata is embedded, so slim containers work too |
+| `KARMABOT_ROLLOVER_TIME` | `09:00` | Time of day (HH:MM, 24-hour) when one period ends and the next begins, in `KARMABOT_TIMEZONE` |
 | `KARMABOT_ADMIN_USERNAME` | — (unset) | Mattermost username of the admin; enables admin commands; unset disables them |
 
 Admin commands (work in a channel or as a direct message to the bot, and

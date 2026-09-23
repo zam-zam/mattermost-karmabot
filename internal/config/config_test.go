@@ -28,8 +28,14 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.DailyPerTargetLimit != 2 {
 		t.Errorf("DailyPerTargetLimit = %d, want 2", cfg.DailyPerTargetLimit)
 	}
-	if cfg.PeriodDays != 7 {
-		t.Errorf("PeriodDays = %d, want 7", cfg.PeriodDays)
+	if cfg.Period != "week" {
+		t.Errorf("Period = %q, want %q", cfg.Period, "week")
+	}
+	if cfg.Timezone != "UTC" {
+		t.Errorf("Timezone = %q, want %q", cfg.Timezone, "UTC")
+	}
+	if cfg.RolloverTime != "09:00" {
+		t.Errorf("RolloverTime = %q, want %q", cfg.RolloverTime, "09:00")
 	}
 	if cfg.DBDriver != "sqlite" {
 		t.Errorf("DBDriver = %q, want %q", cfg.DBDriver, "sqlite")
@@ -190,19 +196,26 @@ func TestLoadRejectsBadLimits(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsBadPeriod(t *testing.T) {
-	for _, value := range []string{"0", "366", "many"} {
-		t.Run(value, func(t *testing.T) {
-			setBaseEnv(t)
-			t.Setenv("KARMABOT_PERIOD_DAYS", value)
+// TestLoadPeriodSettingsPassThrough pins that the period settings are
+// carried through verbatim; their values are parsed and rejected by
+// bot.NewPeriod.
+func TestLoadPeriodSettingsPassThrough(t *testing.T) {
+	setBaseEnv(t)
+	t.Setenv("KARMABOT_PERIOD", "month")
+	t.Setenv("KARMABOT_TIMEZONE", "Europe/Moscow")
+	t.Setenv("KARMABOT_ROLLOVER_TIME", "10:30")
 
-			_, err := Load()
-			if err == nil {
-				t.Fatal("Load succeeded with a bad period, want error")
-			}
-			if !strings.Contains(err.Error(), "KARMABOT_PERIOD_DAYS") {
-				t.Errorf("error %q does not mention KARMABOT_PERIOD_DAYS", err)
-			}
-		})
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Period != "month" {
+		t.Errorf("Period = %q, want month", cfg.Period)
+	}
+	if cfg.Timezone != "Europe/Moscow" {
+		t.Errorf("Timezone = %q, want Europe/Moscow", cfg.Timezone)
+	}
+	if cfg.RolloverTime != "10:30" {
+		t.Errorf("RolloverTime = %q, want 10:30", cfg.RolloverTime)
 	}
 }

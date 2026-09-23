@@ -21,7 +21,9 @@ type Config struct {
 	Language            string `envconfig:"LANGUAGE" default:"en"`
 	DailyTotalLimit     int    `envconfig:"DAILY_TOTAL_LIMIT" default:"5"`
 	DailyPerTargetLimit int    `envconfig:"DAILY_PER_TARGET_LIMIT" default:"2"`
-	PeriodDays          int    `envconfig:"PERIOD_DAYS" default:"7"`
+	Period              string `envconfig:"PERIOD" default:"week"`
+	Timezone            string `envconfig:"TIMEZONE" default:"UTC"`
+	RolloverTime        string `envconfig:"ROLLOVER_TIME" default:"09:00"`
 	AdminUsername       string `envconfig:"ADMIN_USERNAME"`
 }
 
@@ -71,11 +73,7 @@ func (c Config) validate() error {
 			c.DailyTotalLimit,
 		)
 	}
-	if c.PeriodDays < 1 || c.PeriodDays > 365 {
-		return fmt.Errorf(
-			"KARMABOT_PERIOD_DAYS must be between 1 and 365, got %d",
-			c.PeriodDays,
-		)
-	}
+	// Period, timezone and rollover-time values are parsed and rejected
+	// by bot.NewPeriod, which names these variables in its errors.
 	return nil
 }

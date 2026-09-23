@@ -10,6 +10,9 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	// Embed the IANA timezone database so KARMABOT_TIMEZONE works in
+	// containers whose base image ships no /usr/share/zoneinfo.
+	_ "time/tzdata"
 
 	"karmabot/internal/bot"
 	"karmabot/internal/config"
@@ -42,7 +45,13 @@ func run() error {
 	}
 	defer store.Close()
 
-	period := bot.Period{Days: cfg.PeriodDays}
+	period, err := bot.NewPeriod(cfg.Period, cfg.Timezone, cfg.RolloverTime)
+	if err != nil {
+		return err
+	}
+	if _, ok := os.LookupEnv("KARMABOT_PERIOD_DAYS"); ok {
+		log.Warn("KARMABOT_PERIOD_DAYS is no longer supported; configure KARMABOT_PERIOD=week|month instead")
+	}
 	warnForeignKarma(store, period, log)
 
 	client, err := mmclient.New(cfg.MattermostURL, cfg.MattermostToken, log)
@@ -73,7 +82,12 @@ func run() error {
 
 	go scheduler.New(store, client, log, msgs, period).Run(ctx)
 
-	log.Info("karmabot started", "language", cfg.Language, "period_days", cfg.PeriodDays)
+	log.Info("karmabot started",
+		"language", cfg.Language,
+		"period_kind", period.Kind,
+		"timezone", period.Loc.String(),
+		"rollover", period.Rollover(),
+	)
 	events := client.Events(ctx)
 	for {
 		select {
@@ -101,7 +115,7 @@ func newLogger(level string) *slog.Logger {
 }
 
 // warnForeignKarma logs karma rows whose keys don't belong to the current
-// period segmentation, e.g. after changing KARMABOT_PERIOD_DAYS on an
+// period segmentation, e.g. after changing KARMABOT_PERIOD on an
 // existing database. Such rows are ignored but kept in storage.
 func warnForeignKarma(store *storage.Store, period bot.Period, log *slog.Logger) {
 	counts, err := store.KarmaWeekCounts(context.Background())
@@ -118,10 +132,10 @@ func warnForeignKarma(store *storage.Store, period bot.Period, log *slog.Logger)
 		}
 	}
 	if rows > 0 {
-		log.Warn("karma rows from a different period length are ignored (kept in database)",
+		log.Warn("karma rows from a different period segmentation are ignored (kept in database)",
 			"rows", rows,
 			"periods", periods,
-			"period_days", period.Days,
+			"period_kind", period.Kind,
 		)
 	}
 }
