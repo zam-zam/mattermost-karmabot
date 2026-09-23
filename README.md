@@ -54,7 +54,7 @@ as `⭐⭐⭐ 3`.
 
 ### Period summary
 
-At each period rollover (every `KARMABOT_PERIOD_DAYS` days, 30 by default,
+At each period rollover (every `KARMABOT_PERIOD_DAYS` days, 7 by default,
 at 00:00 UTC) the bot posts the finished period's top-5 to every enabled
 channel that had any karma. New karma after that moment counts toward the
 new period.
@@ -78,20 +78,19 @@ new period.
 
 Copy `.env.example` to `.env` (or export the variables):
 
-```bash
-KARMABOT_MATTERMOST_URL=https://mattermost.example.com
-KARMABOT_MATTERMOST_TOKEN=<bot token>
-KARMABOT_DB_DRIVER=sqlite              # default; postgres also supported
-KARMABOT_DB_PATH=./data/karmabot.db   # default; sqlite file location
-KARMABOT_DB_DSN=                      # required for postgres, e.g.
-                                      # postgres://user:pass@host:5432/karmabot
-KARMABOT_LOG_LEVEL=info               # default
-KARMABOT_LANGUAGE=en                  # default; ru for Russian replies
-KARMABOT_DAILY_TOTAL_LIMIT=5          # default; 0 = unlimited
-KARMABOT_DAILY_PER_TARGET_LIMIT=2     # default; 0 = unlimited
-KARMABOT_PERIOD_DAYS=7               # default; e.g. 30 for monthly
-KARMABOT_ADMIN_USERNAME=             # optional; enables admin commands
-```
+| Param | Default | Description |
+| --- | --- | --- |
+| `KARMABOT_MATTERMOST_URL` | — (required) | Mattermost server base URL (`http://` or `https://`) |
+| `KARMABOT_MATTERMOST_TOKEN` | — (required) | Bot account personal access token |
+| `KARMABOT_DB_DRIVER` | `sqlite` | Database backend: `sqlite` or `postgres` |
+| `KARMABOT_DB_PATH` | `./data/karmabot.db` | SQLite file location; directory is created if missing |
+| `KARMABOT_DB_DSN` | — (required for postgres) | PostgreSQL connection string, e.g. `postgres://user:pass@host:5432/karmabot` |
+| `KARMABOT_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, or `error` |
+| `KARMABOT_LANGUAGE` | `en` | Reply language: `en` or `ru`; commands are English-only |
+| `KARMABOT_DAILY_TOTAL_LIMIT` | `5` | Max karma a giver may hand out per channel per UTC day; `0` = unlimited |
+| `KARMABOT_DAILY_PER_TARGET_LIMIT` | `2` | Max karma to the same person per UTC day; `0` = unlimited; must not exceed the total limit |
+| `KARMABOT_PERIOD_DAYS` | `7` | Scoreboard reset interval in days at 00:00 UTC (1–365) |
+| `KARMABOT_ADMIN_USERNAME` | — (unset) | Mattermost username of the admin; enables admin commands; unset disables them |
 
 Admin commands (work in a channel or as a direct message to the bot, and
 only for the configured admin):
