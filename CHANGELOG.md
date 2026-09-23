@@ -1,3 +1,29 @@
+## [unreleased]
+
+### 🚀 Features
+
+- Retry transient Mattermost REST failures with capped backoff
+- Calendar week/month periods with configurable timezone and rollover time
+
+### 📚 Documentation
+
+- Update README. Add AGENTS.md
+- Added RU README
+- Add bilingual landing page for GitHub Pages
+
+### ⚙️ Miscellaneous Tasks
+
+- Gitignore update
+## [1.4.0] - 2026-09-02
+
+### 🚀 Features
+
+- Add support for postgresql db backend
+- Admin should be able to list all the channels karmabot was started in
+
+### ⚙️ Miscellaneous Tasks
+
+- Each docker-compose file can be run standalone without targeting main and overriding files (hate this)
 ## [1.3.0] - 2026-08-31
 
 ### 🚀 Features
