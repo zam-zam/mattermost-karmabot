@@ -4,6 +4,7 @@
   "notStarted": "❗ Карма в этом канале не включена. Напишите `@{{.BotUsername}} start`.",
   "selfKarma": "😏 @{{.Username}}: себе карму повысить нельзя.",
   "noTargets": "Укажите, кого благодарите: `@{{.BotUsername}} ++ @username`",
+  "badMention": "🤔 Не понял команду. Упомяни меня в начале сообщения, например: `@{{.BotUsername}} ++ @username`",
   "userNotFound": "🤔 Пользователь @{{.Username}} не найден.",
   "dailyTotalMax": "❌ @{{.Username}}: на сегодня лимит исчерпан — всего не больше {{.Limit}} кармы в день.",
   "perTargetMax": "❌ @{{.Username}}: этому человеку на сегодня хватит — не больше {{.Limit}} кармы в день.",

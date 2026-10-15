@@ -4,6 +4,7 @@
   "notStarted": "❗ Karma is not enabled in this channel. Say `@{{.BotUsername}} start`.",
   "selfKarma": "😏 @{{.Username}}: you can't give karma to yourself.",
   "noTargets": "Say who you're thanking: `@{{.BotUsername}} ++ @username`",
+  "badMention": "🤔 Didn't get that. Mention me first, like this: `@{{.BotUsername}} ++ @username`",
   "userNotFound": "🤔 User @{{.Username}} not found.",
   "dailyTotalMax": "❌ @{{.Username}}: daily limit reached — no more than {{.Limit}} karma per day.",
   "perTargetMax": "❌ @{{.Username}}: that's enough for this person today — no more than {{.Limit}} karma per day.",

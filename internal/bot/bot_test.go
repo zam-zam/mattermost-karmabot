@@ -300,11 +300,11 @@ func TestIgnoredMessages(t *testing.T) {
 	// Bot's own posts must not re-trigger commands.
 	say(t, b, "ch1", "bot-1", "@karmabot ++ @alice")
 
-	// Mention mid-message is not a command.
-	say(t, b, "ch1", "u-alice", "спасибо @karmabot, что существуешь")
-
 	// A similar username is not the bot.
 	say(t, b, "ch1", "u-alice", "@karmabot2 ++ @bob")
+
+	// No bot mention at all.
+	say(t, b, "ch1", "u-alice", "спасибо, что существуешь")
 
 	// Non-posted events are dropped silently.
 	b.HandleEvent(context.Background(), nil)
@@ -312,6 +312,28 @@ func TestIgnoredMessages(t *testing.T) {
 	if after := len(client.posts); after != before {
 		t.Errorf("bot replied to ignored messages: %d -> %d posts", before, after)
 	}
+}
+
+// TestMisplacedMentionGetsHint proves a message that mentions the bot
+// without being a well-formed command gets a hint with the correct
+// format, as a reply in the mention's thread.
+func TestMisplacedMentionGetsHint(t *testing.T) {
+	b, client := newTestBot(t, "ru")
+
+	id := say(t, b, "ch1", "u-alice", "спасибо @karmabot, что существуешь")
+	wantContains(t, client.lastReply(), "Упомяни меня в начале", "mid-message mention")
+	if got := client.lastRoot(); got != id {
+		t.Errorf("hint reply root = %q, want %q", got, id)
+	}
+
+	say(t, b, "ch1", "u-alice", "@karmabot, top")
+	wantContains(t, client.lastReply(), "Упомяни меня в начале", "punctuation-glued mention")
+
+	say(t, b, "ch1", "u-alice", "@bob ++ @karmabot")
+	wantContains(t, client.lastReply(), "Упомяни меня в начале", "mention at the end")
+
+	say(t, b, "ch1", "u-alice", "привет @KarmaBot")
+	wantContains(t, client.lastReply(), "Упомяни меня в начале", "uppercase mention")
 }
 
 func TestStripBotMention(t *testing.T) {
@@ -335,6 +357,30 @@ func TestStripBotMention(t *testing.T) {
 			if ok != tt.wantOK || (ok && rest != tt.wantRest) {
 				t.Errorf("stripBotMention(%q) = (%q, %v), want (%q, %v)",
 					tt.message, rest, ok, tt.wantRest, tt.wantOK)
+			}
+		})
+	}
+}
+
+func TestMentionsBot(t *testing.T) {
+	tests := []struct {
+		name    string
+		message string
+		want    bool
+	}{
+		{name: "mid-message", message: "спасибо @karmabot, что существуешь", want: true},
+		{name: "punctuation-glued", message: "@karmabot, top", want: true},
+		{name: "uppercase", message: "привет @KarmaBot", want: true},
+		{name: "end of message", message: "@bob ++ @karmabot", want: true},
+		{name: "lookalike username", message: "@karmabot2 ++ @bob", want: false},
+		{name: "no mention", message: "++ @bob", want: false},
+		{name: "no at sign", message: "karmabot top", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := mentionsBot(tt.message, "karmabot"); got != tt.want {
+				t.Errorf("mentionsBot(%q) = %v, want %v", tt.message, got, tt.want)
 			}
 		})
 	}
@@ -391,6 +437,9 @@ func TestEnglishReplies(t *testing.T) {
 	say(t, b, "ch1", "u-alice", "@karmabot help")
 	wantContains(t, client.lastReply(), "Karma bot", "help")
 	wantContains(t, client.lastReply(), "top-10", "help top line")
+
+	say(t, b, "ch1", "u-alice", "thanks @karmabot")
+	wantContains(t, client.lastReply(), "Mention me first", "misplaced mention hint")
 
 	say(t, b, "dm", "u-bob", "karma")
 	reply = client.lastReply()

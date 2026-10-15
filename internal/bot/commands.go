@@ -24,18 +24,23 @@ const (
 var mentionRe = regexp.MustCompile(`@([A-Za-z0-9._-]+)`)
 
 // handleChannel dispatches a channel message that starts with a bot
-// mention. Messages that merely mention the bot mid-text are ignored.
+// mention. A message that mentions the bot anywhere else gets a hint
+// with the correct command format; messages without a bot mention are
+// ignored.
 func (b *Bot) handleChannel(
 	ctx context.Context,
 	channel *model.Channel,
 	post *model.Post,
 ) {
+	th := thread{channelID: post.ChannelId, rootID: threadRoot(post)}
+
 	rest, ok := stripBotMention(post.Message, b.botUsername)
 	if !ok {
+		if mentionsBot(post.Message, b.botUsername) {
+			b.reply(ctx, th, b.msg.badMention(b.botUsername))
+		}
 		return
 	}
-
-	th := thread{channelID: post.ChannelId, rootID: threadRoot(post)}
 
 	verb, args := splitVerb(rest)
 	switch verb {
@@ -329,4 +334,16 @@ func extractMentions(text, botUsername string) []string {
 		targets = append(targets, name)
 	}
 	return targets
+}
+
+// mentionsBot reports whether the message names the bot anywhere, even
+// mid-text or with punctuation glued to the name; lookalike usernames
+// such as @karmabot2 don't count.
+func mentionsBot(message, botUsername string) bool {
+	for _, m := range mentionRe.FindAllStringSubmatch(message, -1) {
+		if strings.EqualFold(m[1], botUsername) {
+			return true
+		}
+	}
+	return false
 }

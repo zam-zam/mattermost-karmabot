@@ -90,6 +90,10 @@ func (m *Messages) noTargets(botUsername string) string {
 	return m.t("noTargets", map[string]any{"BotUsername": botUsername})
 }
 
+func (m *Messages) badMention(botUsername string) string {
+	return m.t("badMention", map[string]any{"BotUsername": botUsername})
+}
+
 func (m *Messages) userNotFound(username string) string {
 	return m.t("userNotFound", map[string]any{"Username": username})
 }

@@ -26,7 +26,9 @@ daily limits, and announces the period's results at each rollover.
 
 ## Commands
 
-In a channel (invite `@karmabot` first):
+In a channel (invite `@karmabot` first). The bot must be the **first word**
+of the message; a message that mentions the bot anywhere else (mid-text,
+with punctuation glued to the name) gets a hint with the correct format:
 
 | Command | Effect |
 | --- | --- |
