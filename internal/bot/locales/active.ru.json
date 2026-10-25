@@ -1,5 +1,5 @@
 {
-  "started": "✅ Карма включена. Благодарите так: `@{{.BotUsername}} ++ @username`",
+  "started": "✅ Карма включена. Благодарите так: `@{{.BotUsername}} ++ @username [причина]`",
   "stopped": "⏸ Карма выключена. Статистика сохранена — `start` продолжит текущий период.",
   "notStarted": "❗ Карма в этом канале не включена. Напишите `@{{.BotUsername}} start`.",
   "selfKarma": "😏 @{{.Username}}: себе карму повысить нельзя.",
@@ -9,6 +9,10 @@
   "dailyTotalMax": "❌ @{{.Username}}: на сегодня лимит исчерпан — всего не больше {{.Limit}} кармы в день.",
   "perTargetMax": "❌ @{{.Username}}: этому человеку на сегодня хватит — не больше {{.Limit}} кармы в день.",
   "applied": "✅ @{{.Username}}: +1 (карма в канале: {{.Stars}})",
+  "appliedReason": "✅ @{{.Username}}: +1 за «{{.Reason}}» (карма в канале: {{.Stars}})",
+  "giverLineReasons": "от @{{.Username}}: {{.Count}} — {{.Reasons}}",
+  "giverLineCount": "от @{{.Username}}: {{.Count}}",
+  "moreReasons": "и ещё {{.Count}}",
   "grantFailed": "⚠️ @{{.Username}}: не получилось начислить карму — попробуйте позже.",
   "internalError": "⚠️ Что-то сломалось на моей стороне. Попробуйте ещё раз позже.",
   "budgetsPrefix": "Осталось на сегодня: {{.Remaining}} из {{.Limit}}",
@@ -65,5 +69,5 @@
   "monthGen10": "октября",
   "monthGen11": "ноября",
   "monthGen12": "декабря",
-  "help": "🤖 Карма-бот\n\nКоманды:\n• `@{{.BotUsername}} start` — включить карму в канале\n• `@{{.BotUsername}} stop` — выключить карму в канале\n• `@{{.BotUsername}} ++ @user [@user2 …]` — дать карму (+1 каждому)\n• `@{{.BotUsername}} top` — топ-10 за период\n• `@{{.BotUsername}} help` — справка\n\n{{.LimitsLine}}\n{{.PeriodLine}}\nВ личных сообщениях: `karma` — твоя карма по каналам."
+  "help": "🤖 Карма-бот\n\nКоманды:\n• `@{{.BotUsername}} start` — включить карму в канале\n• `@{{.BotUsername}} stop` — выключить карму в канале\n• `@{{.BotUsername}} ++ @user [@user2 …] [причина]` — дать карму (+1 каждому; текст после упоминания становится причиной этого пользователя)\n• `@{{.BotUsername}} top` — топ-10 за период с тем, кто и за что дал\n• `@{{.BotUsername}} help` — справка\n\n{{.LimitsLine}}\n{{.PeriodLine}}\nВ личных сообщениях: `karma` — твоя карма по каналам."
 }

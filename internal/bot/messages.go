@@ -3,6 +3,7 @@ package bot
 import (
 	"embed"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -119,6 +120,14 @@ func (m *Messages) applied(username, stars string) string {
 	})
 }
 
+func (m *Messages) appliedReason(username, reason, stars string) string {
+	return m.t("appliedReason", map[string]any{
+		"Username": username,
+		"Reason":   reason,
+		"Stars":    stars,
+	})
+}
+
 func (m *Messages) grantFailed(username string) string {
 	return m.t("grantFailed", map[string]any{"Username": username})
 }
@@ -159,12 +168,19 @@ func (m *Messages) topEmpty(p Period) string {
 }
 
 // PeriodTop renders the end-of-period message the scheduler posts to
-// each channel; start is the finished period's rollover instant.
-func (m *Messages) PeriodTop(entries []storage.KarmaEntry, p Period, start time.Time) string {
+// each channel; start is the finished period's rollover instant. Under
+// every entry the breakdown shows who gave the karma and why.
+func (m *Messages) PeriodTop(
+	entries []storage.KarmaEntry,
+	breakdown map[string][]storage.GiverScore,
+	p Period,
+	start time.Time,
+) string {
 	return m.formatRanked(
 		m.t(p.kindID("weekResultsHeader", "monthResultsHeader"),
 			map[string]any{"Bounds": m.periodBounds(p, start)}),
 		entries,
+		breakdown,
 	)
 }
 
@@ -287,9 +303,16 @@ func (m *Messages) limitsLine(limits Limits) string {
 	}
 }
 
-// top renders the current period's leaderboard for a channel.
-func (m *Messages) top(limit int, p Period, now time.Time, entries []storage.KarmaEntry) string {
-	return m.formatRanked(m.topHeader(limit, p, now), entries)
+// top renders the current period's leaderboard for a channel, with each
+// entry's giver breakdown.
+func (m *Messages) top(
+	limit int,
+	p Period,
+	now time.Time,
+	entries []storage.KarmaEntry,
+	breakdown map[string][]storage.GiverScore,
+) string {
+	return m.formatRanked(m.topHeader(limit, p, now), entries, breakdown)
 }
 
 // dmReport renders the direct-message summary of a user's karma per
@@ -324,13 +347,122 @@ func (m *Messages) dmLines(entries []storage.ChannelKarma, p Period, now time.Ti
 	return lines
 }
 
-func (m *Messages) formatRanked(header string, entries []storage.KarmaEntry) string {
+func (m *Messages) formatRanked(
+	header string,
+	entries []storage.KarmaEntry,
+	breakdown map[string][]storage.GiverScore,
+) string {
 	lines := make([]string, 0, len(entries)+1)
 	lines = append(lines, header)
 	for i, e := range entries {
 		lines = append(lines, m.rankedEntry(i+1, e.Username, karmaStars(e.Karma)))
+		lines = append(lines, m.breakdownLines(breakdown[e.UserID])...)
 	}
 	return strings.Join(lines, "\n")
+}
+
+// maxReasonsShown caps how many distinct reasons one giver's line lists.
+const maxReasonsShown = 3
+
+// reasonCount is one distinct reason with the number of grants citing it.
+type reasonCount struct {
+	reason string
+	count  int
+}
+
+// giverSummary aggregates one giver's grants to one target: reasoned
+// grants (with their reasons) separately from reasonless ones.
+type giverSummary struct {
+	username string
+	reasons  []reasonCount
+	reasoned int
+	plain    int
+}
+
+// total is the giver's whole contribution to the target.
+func (g giverSummary) total() int {
+	return g.reasoned + g.plain
+}
+
+// summarizeGivers folds per-(giver, reason) scores into one summary per
+// giver. Givers are sorted by total contribution then username, reasons
+// by count then alphabetically.
+func summarizeGivers(scores []storage.GiverScore) []giverSummary {
+	index := map[string]int{}
+	summaries := []giverSummary{}
+	for _, s := range scores {
+		idx, ok := index[s.GiverID]
+		if !ok {
+			idx = len(summaries)
+			index[s.GiverID] = idx
+			summaries = append(summaries, giverSummary{username: s.GiverUsername})
+		}
+		g := &summaries[idx]
+		if s.Reason == "" {
+			g.plain += s.Count
+			continue
+		}
+		g.reasoned += s.Count
+		g.reasons = append(g.reasons, reasonCount{reason: s.Reason, count: s.Count})
+	}
+
+	sort.SliceStable(summaries, func(i, j int) bool {
+		if summaries[i].total() != summaries[j].total() {
+			return summaries[i].total() > summaries[j].total()
+		}
+		return summaries[i].username < summaries[j].username
+	})
+	for _, g := range summaries {
+		sort.SliceStable(g.reasons, func(i, j int) bool {
+			if g.reasons[i].count != g.reasons[j].count {
+				return g.reasons[i].count > g.reasons[j].count
+			}
+			return g.reasons[i].reason < g.reasons[j].reason
+		})
+	}
+	return summaries
+}
+
+// breakdownLines renders the giver breakdown under one leaderboard
+// entry: a line for reasoned grants, then a bare count for reasonless
+// ones, two-space indented.
+func (m *Messages) breakdownLines(scores []storage.GiverScore) []string {
+	if len(scores) == 0 {
+		return nil
+	}
+	lines := []string{}
+	for _, g := range summarizeGivers(scores) {
+		if g.reasoned > 0 {
+			lines = append(lines, "  "+m.t("giverLineReasons", map[string]any{
+				"Username": g.username,
+				"Count":    g.reasoned,
+				"Reasons":  m.reasonsList(g.reasons),
+			}))
+		}
+		if g.plain > 0 {
+			lines = append(lines, "  "+m.t("giverLineCount", map[string]any{
+				"Username": g.username,
+				"Count":    g.plain,
+			}))
+		}
+	}
+	return lines
+}
+
+// reasonsList joins a giver's reasons, capping the list and noting how
+// many more were dropped.
+func (m *Messages) reasonsList(reasons []reasonCount) string {
+	parts := make([]string, 0, len(reasons))
+	for i, r := range reasons {
+		if len(parts) == maxReasonsShown {
+			parts = append(parts, m.t("moreReasons", map[string]any{
+				"Count": len(reasons) - i,
+			}))
+			break
+		}
+		parts = append(parts, r.reason)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // karmaStars renders a score as one star per point followed by the total,

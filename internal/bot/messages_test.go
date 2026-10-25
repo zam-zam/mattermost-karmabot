@@ -306,7 +306,7 @@ func TestPeriodTopAndStartedHeaders(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			start := tt.p.Start(time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC))
-			top := tt.m.PeriodTop(entries, tt.p, start)
+			top := tt.m.PeriodTop(entries, nil, tt.p, start)
 			started := tt.m.PeriodStarted(tt.p, start)
 			if !strings.Contains(top, "@alice") || !strings.Contains(top, ":") {
 				t.Errorf("PeriodTop = %q, want a header and entries", top)
@@ -334,7 +334,7 @@ func TestRussianWordingPreserved(t *testing.T) {
 		{
 			name: "started",
 			got:  m.started("karmabot"),
-			want: "✅ Карма включена. Благодарите так: `@karmabot ++ @username`",
+			want: "✅ Карма включена. Благодарите так: `@karmabot ++ @username [причина]`",
 		},
 		{
 			name: "applied",

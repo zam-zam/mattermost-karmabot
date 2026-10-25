@@ -16,9 +16,13 @@ type fakeStore struct {
 	channels []storage.Channel
 	// tops maps "channelID|week" to the leaderboard for that period.
 	tops map[string][]storage.KarmaEntry
+	// breakdowns maps "channelID|week" to the per-target giver scores.
+	breakdowns map[string]map[string][]storage.GiverScore
 
-	prunedDay    string
-	requestedKey string
+	prunedDay             string
+	prunedWeek            string
+	requestedKey          string
+	requestedBreakdownKey string
 }
 
 func (f *fakeStore) EnabledChannels(context.Context) ([]storage.Channel, error) {
@@ -34,8 +38,21 @@ func (f *fakeStore) TopByKarma(
 	return f.tops[channelID+"|"+week], nil
 }
 
+func (f *fakeStore) KarmaBreakdown(
+	_ context.Context,
+	channelID, week string,
+) (map[string][]storage.GiverScore, error) {
+	f.requestedBreakdownKey = week
+	return f.breakdowns[channelID+"|"+week], nil
+}
+
 func (f *fakeStore) PruneDailyGiven(_ context.Context, day string) error {
 	f.prunedDay = day
+	return nil
+}
+
+func (f *fakeStore) PruneGrants(_ context.Context, week string) error {
+	f.prunedWeek = week
 	return nil
 }
 
@@ -97,9 +114,9 @@ func mustPeriod(t *testing.T, kind, tz, rollover string) bot.Period {
 }
 
 // TestPublishFinishedPeriodWeek pins the two posts at a weekly rollover:
-// the finished week's results with its bounds, then the new week's
-// announcement. A channel with an empty finished week gets only the
-// announcement.
+// the finished week's results with their bounds and per-entry giver
+// breakdown, then the new week's announcement. A channel with an empty
+// finished week gets only the announcement.
 func TestPublishFinishedPeriodWeek(t *testing.T) {
 	// Monday 2026-08-31, one second after the 09:00 UTC rollover.
 	now := time.Date(2026, 8, 31, 9, 0, 1, 0, time.UTC)
@@ -107,7 +124,21 @@ func TestPublishFinishedPeriodWeek(t *testing.T) {
 		channels: []storage.Channel{{ID: "ch1"}, {ID: "ch2"}},
 		tops: map[string][]storage.KarmaEntry{
 			// The finished week started Monday 2026-08-24.
-			"ch1|2026-08-24": {{Username: "alice", Karma: 3}, {Username: "bob", Karma: 1}},
+			"ch1|2026-08-24": {
+				{UserID: "u-alice", Username: "alice", Karma: 3},
+				{UserID: "u-bob", Username: "bob", Karma: 1},
+			},
+		},
+		breakdowns: map[string]map[string][]storage.GiverScore{
+			"ch1|2026-08-24": {
+				"u-alice": {
+					{GiverID: "u-carol", GiverUsername: "carol", Reason: "за ревью", Count: 1},
+					{GiverID: "u-carol", GiverUsername: "carol", Reason: "", Count: 1},
+				},
+				"u-bob": {
+					{GiverID: "u-carol", GiverUsername: "carol", Reason: "за деплой", Count: 1},
+				},
+			},
 		},
 	}
 	s, poster := newTestScheduler(t, "en", mustPeriod(t, "week", "UTC", "09:00"), store, now)
@@ -117,8 +148,15 @@ func TestPublishFinishedPeriodWeek(t *testing.T) {
 	if store.requestedKey != "2026-08-24" {
 		t.Errorf("results requested for key %q, want 2026-08-24", store.requestedKey)
 	}
+	if store.requestedBreakdownKey != "2026-08-24" {
+		t.Errorf("breakdown requested for key %q, want 2026-08-24",
+			store.requestedBreakdownKey)
+	}
 	if store.prunedDay != "2026-08-31" {
 		t.Errorf("pruned day = %q, want 2026-08-31", store.prunedDay)
+	}
+	if store.prunedWeek != "2026-08-31" {
+		t.Errorf("pruned week = %q, want 2026-08-31", store.prunedWeek)
 	}
 
 	ch1 := poster.messagesFor("ch1")
@@ -127,6 +165,9 @@ func TestPublishFinishedPeriodWeek(t *testing.T) {
 	}
 	wantContains(t, ch1[0], "🏁 Weekly results (24 August – 30 August):", "results header")
 	wantContains(t, ch1[0], "1. @alice — ⭐⭐⭐ 3", "results entry")
+	wantContains(t, ch1[0], "from @carol: 1 — за ревью", "reasoned breakdown line")
+	wantContains(t, ch1[0], "from @carol: 1\n2. @bob", "reasonless breakdown before next entry")
+	wantContains(t, ch1[0], "from @carol: 1 — за деплой", "bob breakdown line")
 	wantContains(t, ch1[1], "🆕 New week: 31 August – 6 September.", "new week announcement")
 
 	ch2 := poster.messagesFor("ch2")

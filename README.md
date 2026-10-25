@@ -34,8 +34,8 @@ with punctuation glued to the name) gets a hint with the correct format:
 | --- | --- |
 | `@karmabot start` | Enable karma in the channel |
 | `@karmabot stop` | Pause karma (data kept; `start` resumes the current period) |
-| `@karmabot ++ @user [@user2 …]` | Give +1 karma to each mentioned user |
-| `@karmabot top` | Top-10 for the current period |
+| `@karmabot ++ @user [@user2 …] [reason]` | Give +1 karma to each mentioned user; the text after a mention becomes that user's reason |
+| `@karmabot top` | Top-10 for the current period with who gave karma and why |
 | `@karmabot help` | Cheat sheet |
 
 In a direct message to the bot:
@@ -61,6 +61,33 @@ Every `++` reply reports whether the karma was applied, the target's current
 channel total, and the remaining budgets (unlimited budgets are omitted).
 Self-karma is blocked; `--` is not supported.
 
+### Reasons
+
+The text following a mention becomes that user's karma reason — what the
+karma was given for:
+
+- `@karmabot ++ @user for the code review` — the reason is «for the code
+  review»;
+- `@karmabot ++ @user1 for the review @user2 for the deploy` — each user
+  gets their own reason;
+- no text after a mention — karma without a reason, as before.
+
+The reason is echoed in the grant reply, stored in the grant ledger, and
+shown in the summaries (`top` and the period summary): under each entry,
+grouped by giver — reasoned grants list their reasons (at most 3, then
+«and N more»), reasonless ones show just the count. A reason is capped at
+200 characters, and the ledger is pruned at each rollover once the
+results have been posted.
+
+```
+🏅 Top-10 this week (24 August – 30 August):
+1. @alice — ⭐⭐⭐ 3
+  from @bob: 2 — for the code review, for the release help
+  from @bob: 1
+2. @dave — ⭐ 1
+  from @bob: 1
+```
+
 Scores everywhere (grant replies, `top`, period summary, DM report) are
 shown as stars: one star per point, then the total — e.g. 3 karma renders
 as `⭐⭐⭐ 3`.
@@ -71,9 +98,10 @@ Periods follow the calendar: **weeks** (default, Monday to Sunday) or
 **months**, rolling over at `KARMABOT_ROLLOVER_TIME` (09:00 by default) in
 `KARMABOT_TIMEZONE` (UTC by default). At each rollover the bot posts two
 messages to every enabled channel: the finished period's top-5 with its
-bounds (a date range for weeks, e.g. «24 August – 30 August»; the month
-name for months), and the new period's announcement with its bounds. New
-karma after that moment counts toward the new period.
+bounds and each entry's giver breakdown (a date range for weeks, e.g.
+«24 August – 30 August»; the month name for months), and the new period's
+announcement with its bounds. New karma after that moment counts toward
+the new period.
 
 > `KARMABOT_PERIOD_DAYS` (period length in days) is no longer supported;
 > if it is still set, the bot logs a warning at startup. Switching the

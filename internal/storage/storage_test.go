@@ -33,7 +33,7 @@ func eachStore(t *testing.T, fn func(t *testing.T, store *Store)) {
 		}
 		t.Cleanup(func() { store.Close() })
 		// The DSN may point at a shared test database; start clean.
-		for _, table := range []string{"karma", "daily_given", "channels"} {
+		for _, table := range []string{"karma", "daily_given", "channels", "grants"} {
 			if _, err := store.exec(context.Background(), "DELETE FROM "+table); err != nil {
 				t.Fatalf("clearing %s: %v", table, err)
 			}
@@ -336,6 +336,114 @@ func testPruneDailyGiven(t *testing.T, store *Store) {
 	current, _, err := store.GivenOnDay(ctx, "ch1", "alice", "2026-08-26")
 	if err != nil || current != 1 {
 		t.Fatalf("current day after prune: total=%d err=%v", current, err)
+	}
+}
+
+func TestKarmaBreakdownGroupsByGiverAndReason(t *testing.T) {
+	eachStore(t, testKarmaBreakdownGroupsByGiverAndReason)
+}
+
+func testKarmaBreakdownGroupsByGiverAndReason(t *testing.T, store *Store) {
+	ctx := context.Background()
+
+	grants := []Grant{
+		{ChannelID: "ch1", Week: "2026-08-24", Day: "2026-08-26",
+			GiverID: "alice", GiverUsername: "alice",
+			TargetID: "bob", TargetUsername: "bob", Reason: "за ревью"},
+		{ChannelID: "ch1", Week: "2026-08-24", Day: "2026-08-26",
+			GiverID: "alice", GiverUsername: "alice",
+			TargetID: "bob", TargetUsername: "bob", Reason: "за ревью"},
+		{ChannelID: "ch1", Week: "2026-08-24", Day: "2026-08-26",
+			GiverID: "alice", GiverUsername: "alice",
+			TargetID: "bob", TargetUsername: "bob", Reason: ""},
+		{ChannelID: "ch1", Week: "2026-08-24", Day: "2026-08-26",
+			GiverID: "carol", GiverUsername: "carol",
+			TargetID: "bob", TargetUsername: "bob", Reason: "за деплой"},
+		// Same giver, same reason, another target: must land separately.
+		{ChannelID: "ch1", Week: "2026-08-24", Day: "2026-08-26",
+			GiverID: "alice", GiverUsername: "alice",
+			TargetID: "dave", TargetUsername: "dave", Reason: "за ревью"},
+		// Another week is isolated.
+		{ChannelID: "ch1", Week: "2026-08-31", Day: "2026-09-01",
+			GiverID: "alice", GiverUsername: "alice",
+			TargetID: "bob", TargetUsername: "bob", Reason: "за ревью"},
+	}
+	for i, g := range grants {
+		if _, err := store.GrantKarma(ctx, g); err != nil {
+			t.Fatalf("GrantKarma[%d]: %v", i, err)
+		}
+	}
+
+	breakdown, err := store.KarmaBreakdown(ctx, "ch1", "2026-08-24")
+	if err != nil {
+		t.Fatalf("KarmaBreakdown: %v", err)
+	}
+
+	bob := breakdown["bob"]
+	if len(bob) != 3 {
+		t.Fatalf("bob breakdown = %+v, want 3 entries", bob)
+	}
+	// The query orders by giver_username, reason; empty reason sorts
+	// first within alice's rows.
+	want := []GiverScore{
+		{GiverID: "alice", GiverUsername: "alice", Reason: "", Count: 1},
+		{GiverID: "alice", GiverUsername: "alice", Reason: "за ревью", Count: 2},
+		{GiverID: "carol", GiverUsername: "carol", Reason: "за деплой", Count: 1},
+	}
+	for i, w := range want {
+		if bob[i] != w {
+			t.Errorf("bob breakdown[%d] = %+v, want %+v", i, bob[i], w)
+		}
+	}
+
+	dave := breakdown["dave"]
+	if len(dave) != 1 ||
+		dave[0].GiverUsername != "alice" ||
+		dave[0].Reason != "за ревью" ||
+		dave[0].Count != 1 {
+		t.Errorf("dave breakdown = %+v, want one alice/за ревью/1", dave)
+	}
+}
+
+func TestPruneGrants(t *testing.T) {
+	eachStore(t, testPruneGrants)
+}
+
+func testPruneGrants(t *testing.T, store *Store) {
+	ctx := context.Background()
+
+	grants := []Grant{
+		{ChannelID: "ch1", Week: "2026-08-17", Day: "2026-08-17",
+			GiverID: "alice", GiverUsername: "alice",
+			TargetID: "bob", TargetUsername: "bob", Reason: "старое"},
+		{ChannelID: "ch1", Week: "2026-08-24", Day: "2026-08-26",
+			GiverID: "alice", GiverUsername: "alice",
+			TargetID: "bob", TargetUsername: "bob", Reason: "текущее"},
+	}
+	for i, g := range grants {
+		if _, err := store.GrantKarma(ctx, g); err != nil {
+			t.Fatalf("GrantKarma[%d]: %v", i, err)
+		}
+	}
+
+	if err := store.PruneGrants(ctx, "2026-08-24"); err != nil {
+		t.Fatalf("PruneGrants: %v", err)
+	}
+
+	breakdown, err := store.KarmaBreakdown(ctx, "ch1", "2026-08-17")
+	if err != nil {
+		t.Fatalf("KarmaBreakdown old week: %v", err)
+	}
+	if len(breakdown["bob"]) != 0 {
+		t.Errorf("old week grants survived prune: %+v", breakdown["bob"])
+	}
+
+	breakdown, err = store.KarmaBreakdown(ctx, "ch1", "2026-08-24")
+	if err != nil {
+		t.Fatalf("KarmaBreakdown current week: %v", err)
+	}
+	if len(breakdown["bob"]) != 1 || breakdown["bob"][0].Count != 1 {
+		t.Errorf("current week grants pruned: %+v", breakdown["bob"])
 	}
 }
 

@@ -2,6 +2,8 @@
 
 ### 🚀 Features
 
+- Karma reasons: the text after a mention in `++` is stored per grant and echoed in the reply
+- Summaries (`top` and period results) show who gave each user karma and why, grouped by giver; reasonless grants show just the count
 - Retry transient Mattermost REST failures with capped backoff
 - Calendar week/month periods with configurable timezone and rollover time
 

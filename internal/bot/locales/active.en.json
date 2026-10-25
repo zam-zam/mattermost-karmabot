@@ -1,5 +1,5 @@
 {
-  "started": "✅ Karma enabled. Thank like this: `@{{.BotUsername}} ++ @username`",
+  "started": "✅ Karma enabled. Thank like this: `@{{.BotUsername}} ++ @username [reason]`",
   "stopped": "⏸ Karma paused. Scores are kept — `start` resumes the current period.",
   "notStarted": "❗ Karma is not enabled in this channel. Say `@{{.BotUsername}} start`.",
   "selfKarma": "😏 @{{.Username}}: you can't give karma to yourself.",
@@ -9,6 +9,10 @@
   "dailyTotalMax": "❌ @{{.Username}}: daily limit reached — no more than {{.Limit}} karma per day.",
   "perTargetMax": "❌ @{{.Username}}: that's enough for this person today — no more than {{.Limit}} karma per day.",
   "applied": "✅ @{{.Username}}: +1 (channel karma: {{.Stars}})",
+  "appliedReason": "✅ @{{.Username}}: +1 for \"{{.Reason}}\" (channel karma: {{.Stars}})",
+  "giverLineReasons": "from @{{.Username}}: {{.Count}} — {{.Reasons}}",
+  "giverLineCount": "from @{{.Username}}: {{.Count}}",
+  "moreReasons": "and {{.Count}} more",
   "grantFailed": "⚠️ @{{.Username}}: couldn't grant karma — try again later.",
   "internalError": "⚠️ Something broke on my side. Please try again later.",
   "budgetsPrefix": "Left today: {{.Remaining}} of {{.Limit}}",
@@ -65,5 +69,5 @@
   "monthGen10": "October",
   "monthGen11": "November",
   "monthGen12": "December",
-  "help": "🤖 Karma bot\n\nCommands:\n• `@{{.BotUsername}} start` — enable karma in the channel\n• `@{{.BotUsername}} stop` — pause karma in the channel\n• `@{{.BotUsername}} ++ @user [@user2 …]` — give karma (+1 to each)\n• `@{{.BotUsername}} top` — top-10 for the period\n• `@{{.BotUsername}} help` — cheat sheet\n\n{{.LimitsLine}}\n{{.PeriodLine}}\nIn direct messages: `karma` — your karma across channels."
+  "help": "🤖 Karma bot\n\nCommands:\n• `@{{.BotUsername}} start` — enable karma in the channel\n• `@{{.BotUsername}} stop` — pause karma in the channel\n• `@{{.BotUsername}} ++ @user [@user2 …] [reason]` — give karma (+1 to each; the text after a mention becomes that user's reason)\n• `@{{.BotUsername}} top` — top-10 for the period with who gave what\n• `@{{.BotUsername}} help` — cheat sheet\n\n{{.LimitsLine}}\n{{.PeriodLine}}\nIn direct messages: `karma` — your karma across channels."
 }

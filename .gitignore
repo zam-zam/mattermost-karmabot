@@ -5,3 +5,5 @@
 .agents/
 .zcode/
 .DS_Store
+
+.zcodeignore

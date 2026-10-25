@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/mattermost/mattermost/server/public/model"
 
@@ -51,6 +52,18 @@ func (f *fakeClient) GetUserByUsername(
 		return nil, fmt.Errorf("no user %s", username)
 	}
 	return user, nil
+}
+
+func (f *fakeClient) GetUser(
+	_ context.Context,
+	userID string,
+) (*model.User, error) {
+	for _, user := range f.users {
+		if user.Id == userID {
+			return user, nil
+		}
+	}
+	return nil, fmt.Errorf("no user with id %s", userID)
 }
 
 func (f *fakeClient) CreatePost(
@@ -242,7 +255,9 @@ func TestGrantMultipleTargetsOneReply(t *testing.T) {
 
 	say(t, b, "ch1", "u-alice", "@karmabot ++ @bob Спасибо за помощь! @carol")
 	reply := client.lastReply()
-	wantContains(t, reply, "✅ @bob: +1 (карма в канале: ⭐ 1)", "bob applied")
+	wantContains(t, reply,
+		"✅ @bob: +1 за «Спасибо за помощь» (карма в канале: ⭐ 1)",
+		"bob applied with reason echo")
 	wantContains(t, reply, "✅ @carol: +1 (карма в канале: ⭐ 1)", "carol applied")
 	wantContains(t, reply, "Осталось на сегодня: 3 из 5", "combined budget")
 }
@@ -403,17 +418,134 @@ func TestKarmaStars(t *testing.T) {
 	}
 }
 
-func TestExtractMentions(t *testing.T) {
-	got := extractMentions("++ @bob @carol! @bob (и @karmabot)", "karmabot")
-	want := []string{"bob", "carol"}
-	if len(got) != len(want) {
-		t.Fatalf("extractMentions = %v, want %v", got, want)
+func TestExtractTargets(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		want []grantTarget
+	}{
+		{
+			name: "single target with reason",
+			text: "++ @bob за ревью",
+			want: []grantTarget{{username: "bob", reason: "за ревью"}},
+		},
+		{
+			name: "per-target reasons",
+			text: "++ @bob за ревью @carol за деплой",
+			want: []grantTarget{
+				{username: "bob", reason: "за ревью"},
+				{username: "carol", reason: "за деплой"},
+			},
+		},
+		{
+			name: "no reasons",
+			text: "++ @bob @carol",
+			want: []grantTarget{{username: "bob"}, {username: "carol"}},
+		},
+		{
+			name: "text before first mention ignored",
+			text: "++ спасибо большое @bob",
+			want: []grantTarget{{username: "bob"}},
+		},
+		{
+			name: "glued punctuation is not a reason",
+			text: "++ @carol! @bob",
+			want: []grantTarget{{username: "carol"}, {username: "bob"}},
+		},
+		{
+			name: "duplicates and bot skipped",
+			text: "++ @bob @carol @bob (и @karmabot)",
+			want: []grantTarget{{username: "bob"}, {username: "carol"}},
+		},
 	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("extractMentions[%d] = %s, want %s", i, got[i], want[i])
-		}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractTargets(tt.text, "karmabot")
+			if len(got) != len(tt.want) {
+				t.Fatalf("extractTargets(%q) = %+v, want %+v", tt.text, got, tt.want)
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Errorf("extractTargets(%q)[%d] = %+v, want %+v",
+						tt.text, i, got[i], tt.want[i])
+				}
+			}
+		})
 	}
+}
+
+func TestNormalizeReason(t *testing.T) {
+	tests := []struct {
+		name    string
+		segment string
+		want    string
+	}{
+		{name: "trimmed", segment: "  за ревью  ", want: "за ревью"},
+		{name: "edge punctuation stripped", segment: "!Спасибо!!", want: "Спасибо"},
+		{name: "punctuation only", segment: " !?", want: ""},
+		{name: "whitespace collapsed", segment: "за\n\tревью", want: "за ревью"},
+		{name: "inner punctuation kept", segment: "за ревью, деплой и т.д.", want: "за ревью, деплой и т.д"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeReason(tt.segment); got != tt.want {
+				t.Errorf("normalizeReason(%q) = %q, want %q", tt.segment, got, tt.want)
+			}
+		})
+	}
+
+	long := strings.Repeat("а", maxReasonRunes+10)
+	want := strings.Repeat("а", maxReasonRunes) + "…"
+	if got := normalizeReason(long); got != want {
+		t.Errorf("normalizeReason long = %d runes, want %d runes + ellipsis",
+			utf8.RuneCountInString(got), maxReasonRunes)
+	}
+}
+
+// TestGrantReasonsEchoedAndSummarized proves the reason echoes in the
+// grant reply, lands in the ledger, and the top breakdown separates one
+// giver's reasoned grants from reasonless ones.
+func TestGrantReasonsEchoedAndSummarized(t *testing.T) {
+	b, client := newTestBot(t, "ru")
+	startKarma(t, b, "ch1")
+
+	say(t, b, "ch1", "u-alice", "@karmabot ++ @bob за ревью")
+	reply := client.lastReply()
+	wantContains(t, reply,
+		"✅ @bob: +1 за «за ревью» (карма в канале: ⭐ 1)",
+		"applied with reason echo")
+
+	say(t, b, "ch1", "u-alice", "@karmabot ++ @bob")
+	wantContains(t, client.lastReply(),
+		"✅ @bob: +1 (карма в канале: ⭐⭐ 2)", "plain applied")
+
+	say(t, b, "ch1", "u-carol", "@karmabot ++ @bob за деплой")
+
+	say(t, b, "ch1", "u-alice", "@karmabot top")
+	reply = client.lastReply()
+	wantContains(t, reply, "1. @bob — ⭐⭐⭐ 3", "top entry")
+	wantContains(t, reply, "от @alice: 1 — за ревью", "alice reasoned line")
+	wantContains(t, reply, "от @alice: 1\n", "alice reasonless line")
+	wantContains(t, reply, "от @carol: 1 — за деплой", "carol reasoned line")
+}
+
+// TestGrantPerTargetReasons proves one command can carry a different
+// reason per mentioned user.
+func TestGrantPerTargetReasons(t *testing.T) {
+	b, client := newTestBot(t, "ru")
+	startKarma(t, b, "ch1")
+
+	say(t, b, "ch1", "u-alice", "@karmabot ++ @bob за ревью @carol за деплой")
+	reply := client.lastReply()
+	wantContains(t, reply, "за «за ревью»", "bob reason echo")
+	wantContains(t, reply, "за «за деплой»", "carol reason echo")
+
+	say(t, b, "ch1", "u-alice", "@karmabot top")
+	reply = client.lastReply()
+	wantContains(t, reply, "от @alice: 1 — за ревью", "bob breakdown")
+	wantContains(t, reply, "от @alice: 1 — за деплой", "carol breakdown")
 }
 
 // TestEnglishReplies runs the main flows in the default language so both
@@ -434,6 +566,16 @@ func TestEnglishReplies(t *testing.T) {
 	wantContains(t, client.lastReply(), "Top-10", "top header")
 	wantContains(t, client.lastReply(), "1. @bob — ⭐ 1", "top entry")
 
+	say(t, b, "ch1", "u-alice", "@karmabot ++ @bob за ревью")
+	wantContains(t, client.lastReply(),
+		`✅ @bob: +1 for "за ревью" (channel karma: ⭐⭐ 2)`,
+		"applied with reason echo")
+
+	say(t, b, "ch1", "u-alice", "@karmabot top")
+	reply = client.lastReply()
+	wantContains(t, reply, "from @alice: 1 — за ревью", "top breakdown reasoned")
+	wantContains(t, reply, "за ревью\n  from @alice: 1", "top breakdown plain")
+
 	say(t, b, "ch1", "u-alice", "@karmabot help")
 	wantContains(t, client.lastReply(), "Karma bot", "help")
 	wantContains(t, client.lastReply(), "top-10", "help top line")
@@ -444,7 +586,7 @@ func TestEnglishReplies(t *testing.T) {
 	say(t, b, "dm", "u-bob", "karma")
 	reply = client.lastReply()
 	wantContains(t, reply, "Your karma this week", "dm header")
-	wantContains(t, reply, "• dev — ⭐ 1", "dm entry")
+	wantContains(t, reply, "• dev — ⭐⭐ 2", "dm entry")
 
 	say(t, b, "dm", "u-bob", "what?")
 	wantContains(t, client.lastReply(), "Didn't understand", "dm unknown")

@@ -22,7 +22,12 @@ type Store interface {
 		channelID, week string,
 		limit int,
 	) ([]storage.KarmaEntry, error)
+	KarmaBreakdown(
+		ctx context.Context,
+		channelID, week string,
+	) (map[string][]storage.GiverScore, error)
 	PruneDailyGiven(ctx context.Context, day string) error
+	PruneGrants(ctx context.Context, week string) error
 }
 
 // Poster delivers messages to channels; a reply thread root may be
@@ -85,7 +90,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 // publishFinishedPeriod posts, per enabled channel, the finished
 // period's results (only when there is anything to show) and then the
 // new period's announcement with its bounds, and prunes stale daily
-// usage rows.
+// usage rows and grant ledger entries whose results were just posted.
 func (s *Scheduler) publishFinishedPeriod(ctx context.Context) {
 	now := s.now()
 	finishedStart := s.period.PreviousStart(now)
@@ -104,9 +109,14 @@ func (s *Scheduler) publishFinishedPeriod(ctx context.Context) {
 			continue
 		}
 		if len(top) > 0 {
+			breakdown, err := s.store.KarmaBreakdown(ctx, ch.ID, finishedKey)
+			if err != nil {
+				s.log.Error("reading karma breakdown", "err", err, "channel_id", ch.ID)
+				continue
+			}
 			// The results answer no command, so they start their own thread.
 			if err := s.poster.CreatePost(ctx, ch.ID, "",
-				s.msgs.PeriodTop(top, s.period, finishedStart)); err != nil {
+				s.msgs.PeriodTop(top, breakdown, s.period, finishedStart)); err != nil {
 				s.log.Error("posting period results", "err", err, "channel_id", ch.ID)
 			}
 		}
@@ -119,5 +129,8 @@ func (s *Scheduler) publishFinishedPeriod(ctx context.Context) {
 
 	if err := s.store.PruneDailyGiven(ctx, s.period.DayKey(now)); err != nil {
 		s.log.Error("pruning daily usage", "err", err)
+	}
+	if err := s.store.PruneGrants(ctx, s.period.Key(now)); err != nil {
+		s.log.Error("pruning grants", "err", err)
 	}
 }

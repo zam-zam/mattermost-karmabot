@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/mattermost/mattermost/server/public/model"
 
@@ -126,7 +127,12 @@ func (b *Bot) cmdTop(ctx context.Context, th thread) {
 		b.reply(ctx, th, b.msg.topEmpty(b.period))
 		return
 	}
-	b.reply(ctx, th, b.msg.top(topLimit, b.period, b.now(), entries))
+	breakdown, err := b.store.KarmaBreakdown(ctx, th.channelID, b.period.Key(b.now()))
+	if err != nil {
+		b.internal(ctx, th, err, "reading karma breakdown")
+		return
+	}
+	b.reply(ctx, th, b.msg.top(topLimit, b.period, b.now(), entries, breakdown))
 }
 
 // resolvedTarget pairs a mention with its user, for budgets and replies.
@@ -137,7 +143,7 @@ type resolvedTarget struct {
 
 // cmdGrant gives +1 karma to every mentioned user, enforcing the daily
 // limits and replying once with per-target results and the remaining
-// budgets.
+// budgets. The text following each mention becomes that target's reason.
 func (b *Bot) cmdGrant(
 	ctx context.Context,
 	th thread,
@@ -154,9 +160,17 @@ func (b *Bot) cmdGrant(
 		return
 	}
 
-	targets := extractMentions(args, b.botUsername)
+	targets := extractTargets(args, b.botUsername)
 	if len(targets) == 0 {
 		b.reply(ctx, th, b.msg.noTargets(b.botUsername))
+		return
+	}
+
+	// The ledger denormalizes the giver's username, so summaries render
+	// without extra API lookups.
+	giver, err := b.client.GetUser(ctx, post.UserId)
+	if err != nil {
+		b.internal(ctx, th, err, "resolving giver")
 		return
 	}
 
@@ -172,10 +186,10 @@ func (b *Bot) cmdGrant(
 
 	lines := []string{}
 	resolved := []resolvedTarget{}
-	for _, name := range targets {
-		user, err := b.client.GetUserByUsername(ctx, name)
+	for _, t := range targets {
+		user, err := b.client.GetUserByUsername(ctx, t.username)
 		if err != nil {
-			lines = append(lines, b.msg.userNotFound(name))
+			lines = append(lines, b.msg.userNotFound(t.username))
 			continue
 		}
 		if user.Id == post.UserId {
@@ -200,8 +214,10 @@ func (b *Bot) cmdGrant(
 				Week:           periodKey,
 				Day:            day,
 				GiverID:        post.UserId,
+				GiverUsername:  giver.Username,
 				TargetID:       user.Id,
 				TargetUsername: user.Username,
+				Reason:         t.reason,
 			})
 			if err != nil {
 				b.log.Error("granting karma", "err", err, "channel_id", th.channelID)
@@ -210,7 +226,12 @@ func (b *Bot) cmdGrant(
 			}
 			totalGiven++
 			perTarget[user.Id]++
-			lines = append(lines, b.msg.applied(user.Username, karmaStars(newTotal)))
+			if t.reason == "" {
+				lines = append(lines, b.msg.applied(user.Username, karmaStars(newTotal)))
+			} else {
+				lines = append(lines,
+					b.msg.appliedReason(user.Username, t.reason, karmaStars(newTotal)))
+			}
 		}
 	}
 
@@ -318,22 +339,58 @@ func splitVerb(rest string) (string, string) {
 	return verb, strings.TrimSpace(strings.Join(fields[1:], " "))
 }
 
-// extractMentions returns unique mentioned usernames in order of
-// appearance, skipping the bot itself.
-func extractMentions(text, botUsername string) []string {
-	seen := map[string]bool{}
-	targets := []string{}
+// maxReasonRunes caps a stored reason so summaries stay readable.
+const maxReasonRunes = 200
 
-	for _, m := range mentionRe.FindAllStringSubmatch(text, -1) {
-		name := m[1]
+// grantTarget is one mentioned user paired with the reason text that
+// followed its mention, if any.
+type grantTarget struct {
+	username string
+	reason   string
+}
+
+// extractTargets returns unique mentioned usernames in order of
+// appearance, skipping the bot itself. Each target's reason is the text
+// between its mention and the next one (or the end of the message); text
+// before the first mention is ignored.
+func extractTargets(text, botUsername string) []grantTarget {
+	seen := map[string]bool{}
+	targets := []grantTarget{}
+
+	matches := mentionRe.FindAllStringSubmatchIndex(text, -1)
+	for i, m := range matches {
+		name := text[m[2]:m[3]]
 		isBot := strings.EqualFold(name, botUsername)
 		if isBot || seen[name] {
 			continue
 		}
 		seen[name] = true
-		targets = append(targets, name)
+
+		segmentEnd := len(text)
+		if i+1 < len(matches) {
+			segmentEnd = matches[i+1][0]
+		}
+		targets = append(targets, grantTarget{
+			username: name,
+			reason:   normalizeReason(text[m[1]:segmentEnd]),
+		})
 	}
 	return targets
+}
+
+// normalizeReason collapses whitespace, drops edge punctuation (a "!"
+// glued to a mention is not a reason) and caps the length.
+func normalizeReason(segment string) string {
+	reason := strings.Join(strings.Fields(segment), " ")
+	reason = strings.TrimFunc(reason, func(r rune) bool {
+		return unicode.IsPunct(r) || unicode.IsSpace(r)
+	})
+
+	runes := []rune(reason)
+	if len(runes) > maxReasonRunes {
+		return string(runes[:maxReasonRunes]) + "…"
+	}
+	return reason
 }
 
 // mentionsBot reports whether the message names the bot anywhere, even

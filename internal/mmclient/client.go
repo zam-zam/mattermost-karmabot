@@ -110,6 +110,15 @@ func (c *Client) GetUserByUsername(ctx context.Context, username string) (*model
 	return user, nil
 }
 
+// GetUser fetches a user by ID.
+func (c *Client) GetUser(ctx context.Context, userID string) (*model.User, error) {
+	user, _, err := c.api.GetUser(ctx, userID, "")
+	if err != nil {
+		return nil, fmt.Errorf("fetching user %s: %w", userID, err)
+	}
+	return user, nil
+}
+
 // CreatePost posts a plain message, threading it under rootID when it is
 // non-empty.
 func (c *Client) CreatePost(ctx context.Context, channelID, rootID, message string) error {

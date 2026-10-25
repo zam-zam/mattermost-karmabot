@@ -38,14 +38,26 @@ type ChannelKarma struct {
 }
 
 // Grant records one karma point for the target and its cost against the
-// giver's daily budget.
+// giver's daily budget. Reason is the optional free-text "what for";
+// GiverUsername is denormalized so summaries render without API lookups.
 type Grant struct {
 	ChannelID      string
 	Week           string
 	Day            string
 	GiverID        string
+	GiverUsername  string
 	TargetID       string
 	TargetUsername string
+	Reason         string
+}
+
+// GiverScore aggregates one giver's grants of one reason to one target,
+// the row granularity of the karma breakdown.
+type GiverScore struct {
+	GiverID       string
+	GiverUsername string
+	Reason        string
+	Count         int
 }
 
 // Options selects the database backend and its connection settings.
@@ -56,14 +68,17 @@ type Options struct {
 	DSN    string
 }
 
-// Store wraps the database holding channels, weekly karma and daily
-// budget usage.
+// Store wraps the database holding channels, weekly karma, the grant
+// ledger backing the summaries, and daily budget usage.
 type Store struct {
 	db     *sql.DB
 	rebind func(query string) string
 }
 
-const schema = `
+// schemaCore holds the tables whose DDL is identical on every backend.
+// The grants ledger is appended per backend: its auto-increment id column
+// has no cross-backend spelling.
+const schemaCore = `
 CREATE TABLE IF NOT EXISTS channels (
 	channel_id TEXT PRIMARY KEY,
 	team_id    TEXT NOT NULL,
@@ -89,6 +104,38 @@ CREATE TABLE IF NOT EXISTS daily_given (
 	amount     INTEGER NOT NULL DEFAULT 0,
 	PRIMARY KEY (channel_id, from_user, to_user, day)
 );
+`
+
+const schemaSQLite = schemaCore + `
+CREATE TABLE IF NOT EXISTS grants (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	channel_id      TEXT NOT NULL,
+	week            TEXT NOT NULL,
+	giver_id        TEXT NOT NULL,
+	giver_username  TEXT NOT NULL,
+	target_id       TEXT NOT NULL,
+	target_username TEXT NOT NULL,
+	reason          TEXT NOT NULL DEFAULT '',
+	created_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS grants_channel_week_target
+	ON grants (channel_id, week, target_id);
+`
+
+const schemaPostgres = schemaCore + `
+CREATE TABLE IF NOT EXISTS grants (
+	id BIGSERIAL PRIMARY KEY,
+	channel_id      TEXT NOT NULL,
+	week            TEXT NOT NULL,
+	giver_id        TEXT NOT NULL,
+	giver_username  TEXT NOT NULL,
+	target_id       TEXT NOT NULL,
+	target_username TEXT NOT NULL,
+	reason          TEXT NOT NULL DEFAULT '',
+	created_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS grants_channel_week_target
+	ON grants (channel_id, week, target_id);
 `
 
 // Open connects to the chosen database and applies the schema. An empty
@@ -119,7 +166,7 @@ func openSQLite(path string) (*Store, error) {
 	// SQLITE_BUSY between the event loop and the scheduler goroutine.
 	db.SetMaxOpenConns(1)
 
-	return newStore(db, func(query string) string { return query })
+	return newStore(db, func(query string) string { return query }, schemaSQLite)
 }
 
 func openPostgres(dsn string) (*Store, error) {
@@ -127,10 +174,14 @@ func openPostgres(dsn string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening postgres database: %w", err)
 	}
-	return newStore(db, rebindPostgres)
+	return newStore(db, rebindPostgres, schemaPostgres)
 }
 
-func newStore(db *sql.DB, rebind func(string) string) (*Store, error) {
+func newStore(
+	db *sql.DB,
+	rebind func(string) string,
+	schema string,
+) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("applying schema: %w", err)
@@ -282,6 +333,17 @@ func (s *Store) GrantKarma(ctx context.Context, g Grant) (int, error) {
 		return 0, fmt.Errorf("recording daily usage: %w", err)
 	}
 
+	_, err = tx.ExecContext(ctx, s.rebind(`
+		INSERT INTO grants (channel_id, week, giver_id, giver_username,
+			target_id, target_username, reason, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
+		g.ChannelID, g.Week, g.GiverID, g.GiverUsername,
+		g.TargetID, g.TargetUsername, g.Reason,
+		time.Now().UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return 0, fmt.Errorf("recording grant ledger entry: %w", err)
+	}
+
 	var total int
 	err = tx.QueryRowContext(ctx, s.rebind(`
 		SELECT karma FROM karma
@@ -353,6 +415,53 @@ func (s *Store) TopByKarma(
 		entries = append(entries, e)
 	}
 	return entries, rows.Err()
+}
+
+// KarmaBreakdown returns who gave each target karma in the channel that
+// week and why: per target user ID, the giver scores grouped by giver and
+// reason, so each (giver, reason) pair is one entry.
+func (s *Store) KarmaBreakdown(
+	ctx context.Context,
+	channelID, week string,
+) (map[string][]GiverScore, error) {
+	rows, err := s.query(ctx, `
+		SELECT target_id, giver_id, giver_username, reason, COUNT(*)
+		FROM grants
+		WHERE channel_id = ? AND week = ?
+		GROUP BY target_id, giver_id, reason
+		ORDER BY giver_username, reason`,
+		channelID, week)
+	if err != nil {
+		return nil, fmt.Errorf("reading karma breakdown: %w", err)
+	}
+	defer rows.Close()
+
+	breakdown := map[string][]GiverScore{}
+	for rows.Next() {
+		var targetID string
+		var score GiverScore
+		if err := rows.Scan(
+			&targetID,
+			&score.GiverID,
+			&score.GiverUsername,
+			&score.Reason,
+			&score.Count,
+		); err != nil {
+			return nil, fmt.Errorf("scanning karma breakdown row: %w", err)
+		}
+		breakdown[targetID] = append(breakdown[targetID], score)
+	}
+	return breakdown, rows.Err()
+}
+
+// PruneGrants deletes grant ledger rows strictly older than the given
+// week key, once their period's results have been published.
+func (s *Store) PruneGrants(ctx context.Context, week string) error {
+	_, err := s.exec(ctx, "DELETE FROM grants WHERE week < ?", week)
+	if err != nil {
+		return fmt.Errorf("pruning grants: %w", err)
+	}
+	return nil
 }
 
 // UserKarmaByChannel lists the user's non-zero scores for the week across

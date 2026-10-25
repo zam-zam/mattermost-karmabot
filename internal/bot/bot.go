@@ -67,6 +67,7 @@ type Client interface {
 	Me() *model.User
 	GetChannel(ctx context.Context, channelID string) (*model.Channel, error)
 	GetUserByUsername(ctx context.Context, username string) (*model.User, error)
+	GetUser(ctx context.Context, userID string) (*model.User, error)
 	CreatePost(ctx context.Context, channelID, rootID, message string) error
 }
 
