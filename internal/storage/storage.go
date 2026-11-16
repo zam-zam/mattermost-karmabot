@@ -428,7 +428,7 @@ func (s *Store) KarmaBreakdown(
 		SELECT target_id, giver_id, giver_username, reason, COUNT(*)
 		FROM grants
 		WHERE channel_id = ? AND week = ?
-		GROUP BY target_id, giver_id, reason
+		GROUP BY target_id, giver_id, giver_username, reason
 		ORDER BY giver_username, reason`,
 		channelID, week)
 	if err != nil {
